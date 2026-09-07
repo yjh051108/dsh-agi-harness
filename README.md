@@ -21,6 +21,12 @@
 - 信誉从第一步参与，模型与信誉可分歧，分歧被验证后收敛；
 - 注入是策略不是文案：每次交互要么让当前任务更对，要么让未来同类更强，两者皆无=上下文税，删。
 
+## 内置数据（开箱即用，无初始化）
+
+- 灵枢知识库：`plugins/dsh-engram-relay/lingshu/`（融合图谱 + 知识书卡，随包）
+- 语义向量模型：`plugins/dsh-engram-relay/model/`（BAAI bge-small-zh 量化版，Apache-2.0）
+- 说明：跨会话记忆库（engrams.jsonl）随用户私有使用、不随包分发——首次运行命令库为空属正常，插件零报错。
+
 ## 需求
 
 - DSH（DeepSeek Harness）运行时
@@ -40,3 +46,4 @@ cd plugins/dsh-closedloop-mode && node --test tests/
 ## 许可
 
 Apache-2.0（见 LICENSE）。
+

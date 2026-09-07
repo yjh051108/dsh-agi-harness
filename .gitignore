@@ -1,6 +1,6 @@
 node_modules
 *.tgz
-*.onnx
-*.db
 .noise/
 pnpm-lock.yaml
+test-results/
+
