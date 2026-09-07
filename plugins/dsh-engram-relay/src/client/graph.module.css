@@ -1,0 +1,282 @@
+/* 记忆图谱 Tab 样式（gr- 语义，适配 DSH 暗色主题）。 */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  gap: 6px;
+}
+
+.filterBtn {
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  color: var(--ds-color-text-1, #d6d9de);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.filterBtn:hover {
+  background: rgba(127, 127, 127, 0.22);
+}
+
+.filterActive {
+  background: rgba(74, 125, 255, 0.22);
+  border-color: rgba(74, 125, 255, 0.5);
+  color: #9db8ff;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.count {
+  color: var(--ds-color-text-2, #8a94a6);
+  font-size: 12px;
+}
+
+.refresh {
+  background: none;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 6px;
+  color: var(--ds-color-text-1, #d6d9de);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.refresh:hover {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--ds-color-text-2, #8a94a6);
+}
+
+.error {
+  color: #ff6b6b;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: rgba(255, 107, 107, 0.08);
+  border-radius: 6px;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  border: 1px solid rgba(127, 127, 127, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, rgba(74, 125, 255, 0.05), rgba(0, 0, 0, 0.18) 70%);
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.svgPanning {
+  cursor: grabbing;
+}
+
+/* 边：随距离淡出 + 挂载淡入（过滤切换时新边平滑出现） */
+.edge {
+  pointer-events: none;
+  transition: opacity 0.25s;
+  animation: edgeFade 0.4s ease;
+}
+
+@keyframes edgeFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 节点：过滤切换时位置平滑过渡（CSS transform），悬停淡出其余 */
+.node {
+  cursor: pointer;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s;
+}
+
+.node circle {
+  transition: r 0.15s, stroke-width 0.15s;
+}
+
+.nodeHover circle {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.45));
+}
+
+.nodeLabel {
+  fill: var(--ds-color-text-2, #aab2c0);
+  font-size: 10px;
+  pointer-events: none;
+  user-select: none;
+  transition: fill 0.15s;
+}
+
+.nodeLabelHover {
+  fill: #e8eaee;
+  font-weight: 600;
+}
+
+.legend {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ds-color-text-2, #8a94a6);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  padding: 4px 10px;
+  pointer-events: none;
+}
+
+.legendLineSolid {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid #8a94a6;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.legendLineDash {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 1px dashed #aab2c0;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.legendDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* 缩放/平移提示（右下角，浅色胶囊） */
+.zoomHint {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  color: var(--ds-color-text-3, #5c6572);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 3px 10px;
+  pointer-events: none;
+}
+
+/* ---- 详情侧栏 ---- */
+.detail {
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  max-height: 260px;
+  overflow: auto;
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.detailTitle {
+  font-weight: 600;
+  color: var(--ds-color-text-1, #e8eaee);
+}
+
+.detailClose {
+  background: none;
+  border: none;
+  color: var(--ds-color-text-2, #8a94a6);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.detailSummary {
+  margin: 6px 0;
+  color: var(--ds-color-text-2, #aab2c0);
+}
+
+.detailContent {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--ds-color-text-1, #d6d9de);
+  background: rgba(127, 127, 127, 0.08);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 6px 0;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.detailSection {
+  margin-top: 8px;
+}
+
+.detailSectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-color-text-2, #8a94a6);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.detailNode {
+  background: rgba(74, 125, 255, 0.12);
+  border: 1px solid rgba(74, 125, 255, 0.3);
+  color: #9db8ff;
+  border-radius: 4px;
+  padding: 1px 8px;
+  margin: 0 6px 4px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detailNode:hover {
+  background: rgba(74, 125, 255, 0.22);
+}
+
+.detailNone {
+  color: var(--ds-color-text-3, #5c6572);
+  font-size: 12px;
+}

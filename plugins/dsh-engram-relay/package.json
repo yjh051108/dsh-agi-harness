@@ -1,0 +1,100 @@
+{
+  "name": "@dsh-external/dsh-engram-relay",
+  "version": "0.4.0",
+  "description": "大 engram 小 KV：外置 engram 转接层（跨会话分层记忆：global/project/session，AI 自主决策归属 + 因果链接索引 + 渐进披露 + 主动唤醒），为 DSH 实现超长上下文记忆稀疏路由，与官方 compact 共存（官方腾 KV，engram 保细节）",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "model",
+    "lingshu"
+  ],
+  "license": "BSD-3-Clause",
+  "engines": {
+    "dsh": ">=0.0.1-rc"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.6.3",
+    "onnxruntime-node": "1.20.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "dshx": {
+    "contributes": {
+      "tools": [
+        "engram_recall",
+        "engram_store",
+        "engram_propose",
+        "engram_confirm",
+        "engram_reject",
+        "engram_open",
+        "engram_search",
+        "engram_link",
+        "engram_update",
+        "engram_remove",
+        "engram_promote",
+        "engram_status",
+        "engram_verify",
+        "engram_respond",
+        "engram_retire"
+      ],
+      "skills": []
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-system-prompt": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc <2",
+    "cordis": ">=4.0.0-rc <5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "schemastery": "^3.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "lightningcss": "^1.33.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "build:client": "tsdown",
+    "prepare": "bash scripts/build.sh",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
+    "test": "node --test \"tests/*.test.mjs\" \"tests/*.test.js\"",
+    "test:python": "python python/tests/test_engram_module.py && python python/tests/test_hash.py",
+    "sim:1m": "node tests/simulate-1m.mjs",
+    "sim:causal": "node tests/simulate-causal.mjs",
+    "verify": "node scripts/verify.mjs"
+  }
+}

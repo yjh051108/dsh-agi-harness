@@ -1,0 +1,9 @@
+- insert:
+    - id: browser-panel
+      name: '@dsh-external/dsh-browser-panel'
+      config:
+        toolTimeoutMs: 60000
+        snapshotMaxChars: 12000
+        maxInteractiveItems: 60
+        screencastFps: 4
+        screencastQuality: 70

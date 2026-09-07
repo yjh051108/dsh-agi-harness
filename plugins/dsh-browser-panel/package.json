@@ -1,0 +1,57 @@
+{
+  "name": "@dsh-external/dsh-browser-panel",
+  "version": "0.1.0",
+  "description": "WebUI 内嵌完整有头浏览器视图：模型在 DSH WebUI 内实时操控真实浏览器（语义快照 + 编号引用 + 原子动作，0 视觉依赖），用户可见实时画面",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ]
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "node scripts/check-routes.mjs && tsc -p tsconfig.json && tsdown -c tsdown.config.mjs",
+    "check": "node scripts/check-routes.mjs && tsc -p tsconfig.json --noEmit --pretty false",
+    "test": "vitest run",
+    "prepack": "pnpm run build",
+    "prepare": "pnpm run build"
+  },
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "playwright-core": "1.59.1",
+    "schemastery": "^3.18.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "jsdom": "^26.1.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

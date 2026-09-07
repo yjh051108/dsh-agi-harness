@@ -1,0 +1,15 @@
+# dsh-engram-relay bundle 层：插入插件行。
+# 官方格式（docs/user/develop/basic/publish.md）：patch 是 YAML 数组，
+# 顶层 `- insert:` 包裹新增的插件行；`name` 引用包名，Loader 从 profile
+# node_modules 解析（依赖走官方闭包 fallback）。
+# config 默认值写在此（复活器 loader.create 时自动带上；profile patch 可覆盖）。
+- insert:
+    - id: dsh-engram-relay
+      name: '@dsh-external/dsh-engram-relay'
+      config:
+        lingshuVerifyUrl: 'http://127.0.0.1:18766'
+        # embedModel 留空 = 纯算法语义匹配（SemanticScorer 三通道，主路径）；
+        # 填 ONNX 模型目录可启用 bge 对比验证（embedRaw 向量预筛/缓存）
+        embedModel: ''
+        distillEveryTurns: 2
+        injectBudgetTokens: 200
