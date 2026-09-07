@@ -250,7 +250,7 @@ test('s3 复述换数拦（行内预测与声明不符=措辞层）', () => {
 test('s4 通道独立性有据（ref 指到路径/命令）入栈记 evidenced=true', () => {
   const sid = 'v08-evidenced'
   sDecl(sid, '接口数', '6')
-  const r = convergeStep(sid, { agreed: ['接口数: 6'], discrepancies: [], dv: sDv('runtime:node --test optimal.test.mjs', 'fs:D:/dsh/dsh-closedloop-mode/src/optimal-engine.js') })
+  const r = convergeStep(sid, { agreed: ['接口数: 6'], discrepancies: [], dv: sDv('runtime:node --test optimal.test.mjs', 'fs:src/optimal-engine.js') })
   assert.equal(r.step.status, 'closed')
   assert.equal(r.step.dv.evidenced, true)
 })

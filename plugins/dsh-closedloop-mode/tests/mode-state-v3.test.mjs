@@ -15,6 +15,7 @@ import {
 } from '../src/mode-state.js'
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex')
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-msv3-'))
 
 test('p1 全字段 round-trip 等值（含 terminalReport/injected/dipPending/closed）', () => {
   const full = {
@@ -56,29 +57,34 @@ test('p2 写面零轨迹键：输出键集 ∩ 禁止键 = ∅ 且源码写面�
   assert.equal(srcTxt.slice(cut).includes('vChain'), true, '读面段 vChain 命中登记（只读映射合法）')
 })
 
-test('p3 真 v2 盘档迁移等式（动态跨通道，测量时现算）', () => {
-  for (const sid of ['session-b74630b0-c63f-4ce5-8a96-daac4de47c99', '4e0ae1fd-5d01-48bb-bdfd-cee5136938b3']) {
-    const f = legacyFileFor(sid)
-    if (!fs.existsSync(f)) { console.warn('跳过（无旧档）:', sid); continue }
-    const raw = fs.readFileSync(f)
-    const src = JSON.parse(raw.toString('utf8'))
+/** FIX_V2_SAMPLES：内联 v2 盘档样本（自包含——开源不依赖任何机器的真实盘档）。 */
+const FIX_V2_SAMPLES = [
+  { v: 2, purpose: 'p', cost: { assertions: [{ text: 'a', severity: 'major', source: 'x' }], nonGoals: [], assumptions: [] }, plan: { groups: [{ title: 'G', items: [{ title: 'A1', status: 'completed' }, { title: 'A2', status: 'pending' }] }] }, stage: 'develop', lastBand: 'far' },
+  { v: 2, purpose: 'p2', cost: { assertions: [{ text: 'b', severity: 'catastrophic', source: 'y' }], nonGoals: [], assumptions: [] }, plan: { groups: [{ title: 'G2', items: [{ title: 'B1', status: 'completed' }] }] }, stage: 'final', lastBand: 'at' },
+]
+
+test('p3 v2 盘档迁移等式（fixture 自包含，测量时现算）', () => {
+  for (const src of FIX_V2_SAMPLES) {
     const v3 = migrateLegacy(src)
     const items = (src.plan?.groups || []).flatMap((g) => g.items || [])
-    assert.equal(v3.closed.length, items.filter((i) => i.status === 'completed').length, `${sid} closed==completed`)
-    assert.equal(v3.groups.length, (src.plan?.groups || []).length, `${sid} groups 等数`)
-    assert.equal(v3.cost.assertions.length, (src.cost?.assertions || []).length, `${sid} assertions 等数`)
+    assert.equal(v3.closed.length, items.filter((i) => i.status === 'completed').length, 'closed==completed')
+    assert.equal(v3.groups.length, (src.plan?.groups || []).length, 'groups 等数')
+    assert.equal(v3.cost.assertions.length, (src.cost?.assertions || []).length, 'assertions 等数')
     assert.equal(v3.stage, src.stage === 'develop' ? 'rolling' : src.stage === 'final' ? 'final' : v3.stage)
     assert.equal('vChain' in v3, false)
   }
 })
 
-test('p4 源盘档零接触（全部测试读旧档后哈希不变）', () => {
-  const files = ['session-b74630b0-c63f-4ce5-8a96-daac4de47c99', '4e0ae1fd-5d01-48bb-bdfd-cee5136938b3']
-    .flatMap((sid) => [stateFileFor(sid), legacyFileFor(sid), legacyFileFor(sid).replace('.json', '.optimal.json')])
-    .filter((f) => fs.existsSync(f))
-  const before = files.map((f) => sha(fs.readFileSync(f)))
-  for (const f of files) { const s = JSON.parse(fs.readFileSync(f, 'utf8')); migrateLegacy(s); deserializeState(s) }
-  files.forEach((f, i) => assert.equal(sha(fs.readFileSync(f)), before[i], `${path.basename(f)} 哈希不变`))
+test('p4 迁移读面零写盘（fixture 文件哈希不变）', () => {
+  FIX_V2_SAMPLES.forEach((src, i) => {
+    const f = path.join(TMP, `fix-v2-${i}.json`)
+    fs.writeFileSync(f, JSON.stringify(src))
+    const before = sha(fs.readFileSync(f))
+    const s = JSON.parse(fs.readFileSync(f, 'utf8'))
+    migrateLegacy(s)
+    deserializeState(s)
+    assert.equal(sha(fs.readFileSync(f)), before, `${path.basename(f)} 哈希不变`)
+  })
 })
 
 test('p5 快环算子链：标定→组→冻结→确认→闭合→落账→归零', () => {

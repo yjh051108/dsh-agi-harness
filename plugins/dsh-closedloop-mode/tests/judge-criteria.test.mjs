@@ -37,7 +37,7 @@ test('j1 decompose 判据带注释（全角括号）→ 提交即拒（案底 b7
   const sid = 'judge-j1'
   contractState(sid)
   const r = T.decomposeDefinition().execute({
-    groups: [{ title: 'G', spec: 's', accept: ['cmd:node D:/dsh/dsh-closedloop-mode/scripts/build.mjs（判据=构建绿）'], verify: 'self' }],
+    groups: [{ title: 'G', spec: 's', accept: ['cmd:node scripts/build.mjs（判据=构建绿）'], verify: 'self' }],
   }, exec(sid))
   await assert.rejects(() => r, /人判:|注释|案底/, '注释必须进 人判: 项，cmd: 只许命令本体')
 })
@@ -65,14 +65,14 @@ test('j5 decompose 判据指向本步内创建的脚本：dry-run 接受并标�
   const sid = 'judge-j5'
   contractState(sid)
   const r = await T.decomposeDefinition().execute({
-    groups: [{ title: 'G', spec: 's', accept: ['cmd:node D:/dsh/dsh-closedloop-mode/scripts/no-today.mjs'], verify: 'self' }],
+    groups: [{ title: 'G', spec: 's', accept: ['cmd:node scripts/no-today.mjs'], verify: 'self' }],
   }, exec(sid))
   assert.match(r.text, /组结构落盘/, 'pending 判据不再整单拒（旧实现此处抛 broken）')
   assert.match(r.text, /物料未就位/, '回执如实标注挂账')
 })
 
 test('j6 挂账判据落账时仍须实跑：目标未创建=不落账', () => {
-  const s = settleState(['cmd:node D:/dsh/dsh-closedloop-mode/scripts/no-today.mjs'])
+  const s = settleState(['cmd:node scripts/no-today.mjs'])
   const r = T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
   assert.match(r.notes.join(), /物料未就位/)
   assert.match(r.notes.join(), /不落账/)
@@ -84,13 +84,13 @@ test('j7 判据对象形态入参（v0.8.5 JSON 识别）：{kind,command|text} 
   contractState(sid)
   // 宿主工具管线会冻结入参（v0.8.5 案底：原地改写 g.accept 抛 readonly）——冻结对象必须照样可提交
   const frozen = Object.freeze([
-    Object.freeze({ title: 'G', spec: 's', verify: 'self', accept: Object.freeze([Object.freeze({ kind: 'cmd', command: 'node D:/dsh/dsh-closedloop-mode/scripts/build.mjs' }), Object.freeze({ kind: 'human', text: '浏览器实拍见主峰' })]) }),
+    Object.freeze({ title: 'G', spec: 's', verify: 'self', accept: Object.freeze([Object.freeze({ kind: 'cmd', command: 'node scripts/build.mjs' }), Object.freeze({ kind: 'human', text: '浏览器实拍见主峰' })]) }),
   ])
   const r = await T.decomposeDefinition().execute({ groups: frozen }, exec(sid))
   assert.match(r.text, /组结构落盘/, '冻结入参照常落组（克隆而非改写）')
   const saved = JSON.parse(fs.readFileSync(path.join(TMP, 'graded-state', sid + '.closedloop.json'), 'utf8'))
   const acc = saved.groups.find((g) => g.title === 'G').accept
-  assert.ok(acc.includes('cmd:node D:/dsh/dsh-closedloop-mode/scripts/build.mjs'), '对象形态规范化为 cmd: 前缀')
+  assert.ok(acc.includes('cmd:node scripts/build.mjs'), '对象形态规范化为 cmd: 前缀')
   assert.ok(acc.includes('人判:浏览器实拍见主峰'), 'human 规范化为 人判: 前缀')
 })
 
@@ -114,7 +114,7 @@ test('j4 组落账 判据绿 → settled（现状保持）', () => {
 test('j9 挂账提示折叠：同类多条压成一行+N（v0.8.6 展示抖动修复）', async () => {
   const sid = 'judge-j9'
   contractState(sid)
-  const acc = Array.from({ length: 5 }, () => ({ kind: 'cmd', command: 'node D:/dsh/dsh-closedloop-mode/scripts/no-today.mjs' }))
+  const acc = Array.from({ length: 5 }, () => ({ kind: 'cmd', command: 'node scripts/no-today.mjs' }))
   const r = await T.decomposeDefinition().execute({ groups: [{ title: 'G', spec: 's', accept: acc, verify: 'self' }] }, exec(sid))
   const listed = (r.text.match(/判据 #[0-9]+/g) || []).length
   assert.ok(listed <= 3, `折叠后仅列前 3 条（原 5 条同类，实列 ${listed}）`)

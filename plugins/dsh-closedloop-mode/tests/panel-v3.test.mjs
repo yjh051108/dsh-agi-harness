@@ -5,12 +5,13 @@ import fs from 'node:fs'
 
 const { panelBody, auditStat } = await import('../src/index.js')
 const { migrateLegacy, controlSurface } = await import('../src/mode-state.js')
-const G = 'C:/Users/Eldwen/.dsh/graded-state/'
-const SM = 'e5e9df00-a5bb-43bb-9412-5fa811684a75'
+// fixture（自包含——开源不依赖任何机器的真实盘档）
+const FIX_ST = JSON.parse(JSON.stringify({ v: 2, stage: 'final', task: 't', purpose: 'p', cost: { assertions: [{ text: 'a', severity: 'major', source: 'x' }], nonGoals: [], assumptions: [] }, plan: { groups: [{ title: 'G', items: [{ title: 'A1', status: 'completed' }] }] }, closed: [{ title: 'A1', group: 'G', at: 1, band: 'at', audit: { rounds: 1, last: { verdict: 'pass' } } }], groups: [{ title: 'G', spec: 's', accept: ['人判:x'], verify: 'self', settled: { at: 1, verdict: 'mechanical-settle' } }], lastBand: 'at' }))
+const st = migrateLegacy(FIX_ST)
+const stack = { steps: [{ n: 1, title: 'A1', status: 'closed', dv: { before: 'far', after: 'at', mode: 'improve' } }], rolledBack: [] }
+const SM = 'fixture-sid'
 
-test('panelBody v3 形状：真 smoke3 档 → v:3 全键面且与盘现读等式', () => {
-  const st = migrateLegacy(JSON.parse(fs.readFileSync(`${G}${SM}.closedloop.json`, 'utf8')))
-  const stack = JSON.parse(fs.readFileSync(`${G}${SM}.optimal.json`, 'utf8'))
+test('panelBody v3 形状：fixture final 档 → v:3 全键面且自洽等式', () => {
   const p = panelBody(SM, st, stack)
   assert.equal(p.ok, true)
   assert.equal(p.v, 3)

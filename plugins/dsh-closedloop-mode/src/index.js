@@ -87,7 +87,7 @@ function userMsg(text) {
 
 /** 截断显示（v0.4-S1 补定义——此前写闸短句引用未定义的 cut，ReferenceError 被
  *  外层 catch 静默吞掉 → saveState 永不执行 → face 幂等标记丢失 → 每步重注刷屏。
- *  案底：session b74630b0 用户实拍 face-spam，scanLog/injected 双证定谳）。 */
+ *  案底：用户实测面板刷屏事件，scanLog/injected 双证定谳）。 */
 const cut = (s, n) => {
   const x = String(s || '')
   return x.length > n ? x.slice(0, n) + '…' : x
@@ -589,7 +589,7 @@ export function apply(ctx, config) {
       if (s.stage !== 'off') saveState(sid2, s)
     } catch (e) {
       // v0.4-S1 修：注入失败不阻断——但**必须留痕**，否则这正是让"cut undefined 静默吃 saveState"等真 bug
-      // 长期隐身的面板（每步重注刷屏事件案底：session b74630b0，2026-09-04）。
+      // 长期隐身的面板（每步重注刷屏事件案底：真实会话实测）。
       console.warn('[closedloop] post-step inject failed（不应阻断，详情见下）:', e?.message || e)
     }
     return decision

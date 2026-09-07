@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const tools = readFileSync('D:/dsh/dsh-closedloop-mode/src/tools.js', 'utf8')
+const tools = readFileSync(new URL('../src/tools.js', import.meta.url), 'utf8')
 const rank = await import('../src/rank-organ.js')
 const quota = await import('../src/quota-organ.js')
 const rot = await import('../src/audit-rotation.js')

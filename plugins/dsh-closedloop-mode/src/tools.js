@@ -959,9 +959,9 @@ export function terminalCheckDefinition() {
       let stampNote = ''
       let priceNote = '' // v0.6.0 影子定价外层声明（if 内 IIFE 赋值；非归零保持空串不显示）
       if (rep.zero) {
-        const stamper = process.env.DSH_STAMPER_JS || 'D:/dsh/03-dev-infra/dsh-stamper/stamper.mjs'
+        const stamper = process.env.DSH_STAMPER_JS || ''
         try {
-          if (!existsSync(stamper)) stampNote = '\n🔏 stamper 缺席——无外部凭证（装法：DSH_STAMPER_JS 指向 stamper.mjs）'
+          if (!stamper || !existsSync(stamper)) stampNote = '\n🔏 stamper 缺席——无外部凭证（装法：DSH_STAMPER_JS 指向签名脚本）'
           else stampNote = '\n🔏 ' + String(execFileSync(process.execPath, [stamper, 'stamp', sid], { timeout: 15000, encoding: 'utf8' })).trim()
         } catch (e) { stampNote = `\n🔏 盖章被拒（链红=篡改信号，交人审）：${String(e?.stdout || e?.message || e).trim().slice(0, 120)}` }
       }
@@ -984,7 +984,7 @@ export function terminalCheckDefinition() {
             if (!hh.ok) { pr.real = false; pr.demotions = (pr.demotions || 0) + 1; pr.demotionLog = [...(pr.demotionLog || []), { at: Date.now(), why: hh.note }].slice(-10); demoNote = ` ｜⟲回影子止血：${hh.note}（第${pr.demotions}次，达标可再切）` }
           }
           // 每 50 单触发离线再校准（analyze-real→双制重跑；detached 不卡 terminal）
-          if (pr.gates.records % 10 === 0) { try { spawn(process.execPath, ['D:/dsh/harness-master-design/recalibrate.mjs'], { detached: true, stdio: 'ignore' }).unref() } catch { /* 缺脚本=下次 */ } }
+          if (pr.gates.records % 10 === 0 && process.env.DSH_RECALIBRATE_JS) { try { spawn(process.execPath, [process.env.DSH_RECALIBRATE_JS], { detached: true, stdio: 'ignore' }).unref() } catch { /* 缺脚本=下次 */ } }
           savePricing(dir, pr)
           return `\n🧮 ${sw.real ? '定价已切实（判据达标）' : '影子定价'}：g=${obs.g}步 ΔV≈${obs.dV.toFixed(1)} 时距${obs.dtMin.toFixed(0)}min 炉${obs.rbCount} frag=${obs.fragRed ? '红' : '净'} | C_shadow=${sc ?? '冷启动'} | ${sw.note}${demoNote}`
         } catch (e) { return `\n🧮 影子定价异常（不阻断归零）：${String(e?.message || e).slice(0, 60)}` }

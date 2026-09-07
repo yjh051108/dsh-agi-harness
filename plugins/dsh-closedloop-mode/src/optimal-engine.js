@@ -50,7 +50,7 @@ export function saveStack(sid, s) {
 /* ------------------------- v0.5.3 哈希链账本（R18 第一层：篡改可检测） -------------------------
  * append-only 链文件 <sid>.chain.jsonl：每行 {seq, at, prev, h, d}，h=sha256(prev+d)，d=规范digest(栈内容)。
  * 安全模型（诚实标注）：链检测「部分改写/意外漂移」——账本 digest ≠ 链头 d 即红；
- * **防不住完全重写链文件的本地攻击者**——那是 stamper（外部密钥盖章第二层）的职责。零改 dsh。 */
+ * **防不住完全重写链文件的本地攻击者**——那是 stamper（外部密钥盖章第二层）的职责。零改宿主。 */
 export function chainFileFor(sid) {
   return join(optimalDir(), String(sid || '').replace(/[^a-zA-Z0-9-]/g, '_') + '.chain.jsonl') // 与 optimalFileFor 同清洗规则（案底：漏 0-9 致全部撞进同一链文件）
 }

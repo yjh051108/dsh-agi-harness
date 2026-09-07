@@ -47,7 +47,7 @@ const GENERIC = {
 }
 
 /** 摘要文本（限 N 条，按时间取最近；格式=一行一条：类别 × 次数 + 提醒）。
- *  v0.8.1 串味修复（对照案底 session-e65d1ab4 回执里出现他会话具体数字）：
+ *  v0.8.1 串味修复（对照案底：跨会话串味——回执出现他会话具体数字）：
  *  具体案例原文只对**同会话**开放，跨会话只给类别级通用提醒——防照抄别人的数。 */
 export function lessonSummary(limit = 3, dir, sid = '') {
   const ls = readLessons(dir);

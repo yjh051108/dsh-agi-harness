@@ -10,9 +10,11 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-face-'))
 process.env.DSH_HOME = TMP // 全程临时（真盘零接触——闸样本栈也不许落真目录）
 const { declareStep } = await import('../src/optimal-engine.js')
 const { migrateLegacy, controlSurface } = await import('../src/mode-state.js')
+/** FIXTURE：最小 v2 主会话档（自包含——开源不依赖任何机器的真实盘档）。 */
+const FIXTURE = JSON.stringify({ v: 2, purpose: 'fixture 主会话构造面', cost: { assertions: [{ text: '质量不降', severity: 'catastrophic', source: 'fixture' }], nonGoals: [], assumptions: [] }, plan: { groups: [{ title: 'G', items: [{ title: 'A1', status: 'completed' }] }] }, closed: [{ title: 'A1', group: 'G', at: 1, band: 'at' }], groups: [{ title: 'G', spec: 's', accept: ['人判:x'], verify: 'self', settled: { at: 1, verdict: 'mechanical-settle' } }], lastBand: 'at', stage: 'final' })
 
-test('p1 真主会话档 → face 字节 ≤1333（FIT-plant 3.9KB×⅓）且任务语四元齐全', () => {
-  const raw = JSON.parse(fs.readFileSync('C:/Users/Eldwen/.dsh/graded-state/session-b74630b0-c63f-4ce5-8a96-daac4de47c99.json', 'utf8'))
+test('p1 主会话档（fixture 构造，禁真盘）→ face 字节 ≤FACE_BUDGET 且任务语四元齐全', () => {
+  const raw = JSON.parse(FIXTURE)
   const face = stateFace(controlSurface(migrateLegacy(raw)))
   const bytes = Buffer.byteLength(face, 'utf8')
   assert.ok(bytes <= FACE_BUDGET, `face=${bytes}B ≤ ${FACE_BUDGET}B`)
@@ -94,7 +96,7 @@ test('p5 判定面零引用展示面（教育=报错面的结构保证）', () =
 })
 
 test('p6 weightsFace 合同锁定回执（慢环主权提示，≤FACE_BUDGET）', () => {
-  const raw = JSON.parse(fs.readFileSync('C:/Users/Eldwen/.dsh/graded-state/session-b74630b0-c63f-4ce5-8a96-daac4de47c99.json', 'utf8'))
+  const raw = JSON.parse(FIXTURE)
   const w = weightsFace(controlSurface(migrateLegacy(raw)))
   assert.ok(Buffer.byteLength(w) <= FACE_BUDGET)
   assert.ok(w.includes('待确认') && w.includes('完成条件') && w.includes('不做的事'))

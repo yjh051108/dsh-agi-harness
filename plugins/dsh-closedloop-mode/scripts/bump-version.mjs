@@ -6,10 +6,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const to = process.argv[2]
 if (!/^\d+\.\d+\.\d+$/.test(to || '')) { console.log('用法: node bump-version.mjs <x.y.z>'); process.exit(2) }
 const F = {
-  src: 'D:/dsh/dsh-closedloop-mode/src/inject-text.js',
-  readme: 'D:/dsh/harness-master-design/README.md',
-  ho: 'D:/dsh/HANDOFF-CLOSEDLOOP.md',
-  pkg: 'D:/dsh/dsh-closedloop-mode/package.json',
+  src: 'src/inject-text.js',
+  readme: 'README.md',
+  ho: 'HANDOFF.md',
+  pkg: 'package.json',
 }
 const MINOR = to.split('.').slice(1).join('.')
 const orig = {}

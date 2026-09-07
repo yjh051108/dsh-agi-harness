@@ -5,8 +5,8 @@
  * 三层权重：session（快适应）/ project（中速）/ harness（高置信防污染）——层间实时提交。
  * 模型指纹绑定：harness 层权重携带 model 字段，换模型=换一套。
  *
- * 设计文档：harness-master-design/AGI-HARNESS-ARCHITECTURE.md
- * 仿真验证：harness-master-design/sim/agi-sim.mjs（6/6 通过）
+ * 设计文档：docs/DESIGN.md（仓库内）
+ * 仿真验证：仓库内 sim 自检（6/6 通过）
  */
 import { join } from 'node:path'
 import { homedir } from 'node:os'

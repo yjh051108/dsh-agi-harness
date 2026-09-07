@@ -64,10 +64,11 @@ test('p3 第5闸：单通道 diff → 重流程引导三要素齐且 declareStep
   assert.equal(materialize(surface, { title: 'X', predict: PRED, channels: CH }).admission, 'light')
 })
 
-test('p4 差分体积比：diff/手写全量 ≤ 0.5（基线=真栈盘档最近闭块现算，零钉字面）', () => {
-  const real = 'C:/Users/Eldwen/.dsh/graded-state/session-b74630b0-c63f-4ce5-8a96-daac4de47c99.optimal.json'
-  if (!fs.existsSync(real)) { console.warn('真栈不可读，跳过'); return }
-  const steps = JSON.parse(fs.readFileSync(real, 'utf8')).steps
+test('p4 差分体积比：diff/手写全量 ≤ 0.5（基线=内联 closed 步现算，自包含）', () => {
+  const steps = JSON.parse(JSON.stringify([
+    { n: 1, title: '盘档 v3：权重驻留与轨迹除合同', status: 'closed', group: 'G', at: 1, band: 'at', invariants: ['权重驻留不随会话漂移', '轨迹除合同外不泄他步', '旧直读映射保持注册'], predictions: [{ key: 'k1', value: '3', source: 'read:fixture' }], law: [{ signal: 'ΔV 严格降', action: 'converge 直拒' }], measure: { channels: ['p:a', 'p:b'] }, dv: { before: 'far', after: 'at', mode: 'improve' } },
+    { n: 2, title: '对照组冻结与新目录演进', status: 'closed', group: 'G', at: 2, band: 'near', invariants: ['对照组冻结不因新目录演进解锁'], predictions: [{ key: 'k2', value: '5', source: 'read:fixture' }], law: [], measure: { channels: ['p:c'] }, dv: { before: 'near', after: 'at', mode: 'improve' } },
+  ]))
   const handSteps = steps.filter((s) => s.status === 'closed' && ['盘档 v3：权重驻留与轨迹除合同', '对照组冻结与新目录演进'].includes(s.title))
   assert.ok(handSteps.length >= 1)
   const base = Math.min(...handSteps.map((s) => JSON.stringify(s).replace(/"(status|agreed|discrepancies|dv|signature|at|n|rolledBack|pendingDip)":("[^"]*"|\[[^\]]*\]|[\w.]+|null),?/g, '').length))

@@ -5,10 +5,14 @@ import fs from 'node:fs'
 import { auditBrief, parseVerdict, recordAuditVerdict, BRIEF_BUDGET, RECEIPT_BUDGET } from '../src/audit-dispatch.js'
 import { serializeState, deserializeState, initMode } from '../src/mode-state.js'
 
-const REAL = 'C:/Users/Eldwen/.dsh/graded-state/session-b74630b0-c63f-4ce5-8a96-daac4de47c99.optimal.json'
-const raw = fs.readFileSync(REAL, 'utf8')
-const steps = JSON.parse(raw).steps
+/** 内联最小栈（自包含——开源不依赖任何机器的真实盘档；邻步标题/预测字段为断言词）。 */
 const T = '差分契约与准入闸：args=diff / engine=merge'
+const raw = JSON.stringify({ version: 2, steps: [
+  { n: 14, title: '盘档 v3：权重驻留与轨迹除合同', status: 'closed', dv: { before: 'far', after: 'at' } },
+  { n: 15, title: T, status: 'closed', predictions: [{ key: '物化形状', value: '24B', source: 'prior:s' }, { key: '体积比', value: '0.5', source: 'prior:s' }], law: [{ signal: 's', action: 'a' }], measure: { channels: ['p:a', 'p:b'] }, dv: { before: 'far', after: 'at', mode: 'improve' }, agreed: [], discrepancies: [], cost: [] },
+  { n: 16, title: '快环 Propose 试航', status: 'closed', dv: { before: 'at', after: 'at' } },
+], rolledBack: [] })
+const steps = JSON.parse(raw).steps
 
 test('p1 审材=切片非全栈：≤1536B、含目标契约与邻域两步、其余步预测全文零出现', () => {
   const r = auditBrief({ stackRaw: raw, targetTitle: T, cost: { assertions: [{ text: 'x', severity: 'catastrophic' }] } })
