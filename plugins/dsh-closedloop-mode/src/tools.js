@@ -545,7 +545,7 @@ export function measureProposeDefinition() {
 export function optimalDeclareDefinition() {
   return {
     name: 'optimal_declare',
-    description: '【闭环·声明·差分面 v0.3】args=diff：title+group（提议归属）+predict[{key,value,source}]+channels[≥2]（不足按第5闸重流程）+可选覆写 invariants/law/cost/vExpect/dipPlan/confidence/right/wrong。链式量（beforeBand=盘档 lastBand）/Q_N 成本投影/法基行由引擎物化——模型不抄。物化全量交 declareStep 同一道闸（无源=拒、≥2通道、dip 回升、签名局部化）。⚠ 两条高频拒因前置：①引 probe:<key> 的预测——值内数字必须出现在该探针实跑 output（引旧探针=拒，拒语自带台账尾供换引）；②回滚后同签名重 declare 直拒——改 title/来源/不变式任一再宣。兼容 v0.2 全量形状（含 measure/law 直传）。',
+    description: '【闭环·声明·差分面 v0.3】args=diff：title+group（提议归属）+predict[{key,value,source}]+channels[≥2]（不足按第5闸重流程）+可选覆写 invariants/law/cost/vExpect/dipPlan/confidence/right/wrong。链式量（beforeBand=盘档 lastBand）/Q_N 成本投影/法基行由引擎物化——模型不抄。物化全量交 declareStep 同一道闸（无源=拒、≥2通道、dip 回升、签名局部化）。**vExpect 三段用法（按引擎回执显示的 beforeBand 选，验证类=该段自然归宿）**：① beforeBand=far/near 且有增量→improve（严格提升）；② 基建/暂平段（档位平或暂劣）→dip+必填 dipPlan 回升计划；③ beforeBand=at 或验证/核验/保持类（已达标确认）→maintain（测后仍 at 即闭合，掉档=倒退直拒）。⚠ 两条高频拒因前置：①引 probe:<key> 的预测——值内数字必须出现在该探针实跑 output（引旧探针=拒，拒语自带台账尾供换引）；②回滚后同签名重 declare 直拒——改 title/来源/不变式任一再宣。兼容 v0.2 全量形状（含 measure/law 直传）。',
     parameters: {
       type: 'object', additionalProperties: false, required: ['title'],
       properties: {

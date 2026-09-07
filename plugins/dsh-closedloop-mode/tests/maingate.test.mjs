@@ -73,4 +73,13 @@ test('m6 生产形状锁（r43 哑火案根因）：merge 注入默认 improve �
   assert.match(r.error, /maintainGate/)
 })
 
+test('m7 验证类回归锁：at 档验证/核验步 vExpect=maintain 全链闭合（46de0bd4 实操映射）', () => {
+  eng.saveStack('mg-7', { version: 2, steps: [baseStep('at')], rolledBack: [] })
+  const r = eng.declareStep('mg-7', args({ vExpect: 'maintain' }))
+  assert.equal(r.ok, true, '验证类 at→at maintain 声明过闸')
+  const dv = { beforeBand: 'at', measuredBand: 'at', channels: ['read: a', 'rt: b'] }
+  const c = eng.convergeStep('mg-7', { agreed: ['k: 1'], discrepancies: [], dv })
+  assert.equal(c.step?.status ?? c.status, 'closed', '测后仍 at=闭合（验证类闭环）')
+})
+
 process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {} })

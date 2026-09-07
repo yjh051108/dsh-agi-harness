@@ -1,0 +1,41 @@
+# CI（GitHub Actions 模板）
+
+> 说明：推送 workflow 文件需要 GitHub token 带 `workflow` scope。
+> 开启方法：`gh auth refresh --scopes workflow` 之后，把本文件复制为 `.github/workflows/ci.yml` 并推送。
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  closedloop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/dsh-closedloop-mode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build
+        run: node scripts/build.mjs
+      - name: Tests (self-contained, no real ledgers required)
+        run: node --test tests/
+  engram:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/dsh-engram-relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Smoke import
+        run: node -e "import('./lib/index.js').then(()=>console.log('engram smoke ok')).catch(e=>{console.error(e.message);process.exit(1)})"
+```
