@@ -330,10 +330,17 @@ test('r71 刀三 师傅层：同型基线+偏差反馈（just-in-time 校准，�
 
 test('r72 v0.6.34 锚点净化：read: 带括注/反斜杠 不再误拒（P3-3）', async () => {
   const eng = await import('../src/optimal-engine.js')
-  const r = eng.checkPredictionSources('t', [{ key: 'k', value: '1', source: 'read:D:/dsh/dsh-closedloop-mode/package.json（本轮 read 实测原文）' }])
+  // 环境隔离（2026-09-08 基线修复）：原用例写死 Windows 路径 D:/dsh/...（Linux 无 D 盘必红）。
+  // 改本机临时真实文件——判据强度不变（净化后仍须真存在才放行，不存在仍拒）。
+  const tmp = mkdtempSync(join(tmpdir(), 'cl-r72-'))
+  const pkg = join(tmp, 'package.json')
+  writeFileSync(pkg, '{}', 'utf8')
+  const r = eng.checkPredictionSources('t', [{ key: 'k', value: '1', source: `read:${pkg}（本轮 read 实测原文）` }])
   assert.equal(r.ok, true, '括注净化后过（P3-3 案底：括注污染=文件不存在误拒）')
-  const r2 = eng.checkPredictionSources('t', [{ key: 'k', value: '1', source: 'read:C:\\dsh\\不存在\\x.mjs' }])
-  assert.equal(r2.ok, false)
+  const r2 = eng.checkPredictionSources('t', [{ key: 'k', value: '1', source: `read:${join(tmp, '不存在', 'x.mjs')}` }])
+  assert.equal(r2.ok, false, '不存在的锚点仍拒')
+  const r3 = eng.checkPredictionSources('t', [{ key: 'k', value: '1', source: 'read:C:\\dsh\\不存在\\x.mjs' }])
+  assert.equal(r3.ok, false, '反斜杠形态的不存在路径仍拒')
 })
 
 test('r73 v0.6.34 probe -e 早拒指路（P3-2）', async () => {

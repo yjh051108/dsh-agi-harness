@@ -12,6 +12,7 @@ import path from 'node:path'
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-eng-'))
 process.env.DSH_HOME = TMP
 process.env.USERPROFILE = TMP // 钉住引擎第二候选 homedir()（v0.4.6 双路径扫描——不钉会误命中真实用户库）
+process.env.HOME = TMP // 环境隔离（2026-09-08 基线修复）：Linux 的 homedir() 读 $HOME，不钉则 e5 删库后仍命中真实用户库（误报「无节点」而非「不可达」）
 fs.mkdirSync(path.join(TMP, 'engram-relay'), { recursive: true })
 const STORE = path.join(TMP, 'engram-relay', 'engrams.jsonl')
 fs.writeFileSync(STORE, [
