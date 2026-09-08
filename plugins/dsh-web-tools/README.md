@@ -32,6 +32,20 @@
 
 > `web_status` 的 `instances` 只数**主进程**（`--type=` 是 Chrome 子进程标志；旧实现把 renderer/gpu 一起数，单实例误报 10 个）。
 
+## 两套浏览器 / 并发提示（v0.1.3）
+
+| | 本插件 `dsh-web-tools` | `browser-harness` 技能 |
+|---|---|---|
+| 浏览器 | WSL/Linux 系统 Chromium（`chromePath`），**headless** | 用户机器上的 Windows Edge，**可见窗口** |
+| 连接 | CDP `127.0.0.1:9339`（插件自己 spawn） | CDP `ws://127.0.0.1:9222` |
+| profile | 独立 `profileDir`（默认 `DSH_HOME/.web-shot-profile`） | 用户日常 profile（带登录态） |
+| 共享性 | **单例·单页**——一个宿主一个浏览器一个页面 | 单实例·多标签——全机共享标签栏 |
+
+- **同一时刻只让一个 agent 操作浏览器**：本插件单例单页，多会话/多模型并发会互相导航、抢同一页；两套浏览器**不共享 cookie/登录态/标签**，一套的截图不能当作另一套的证据。
+- 别用 `browser-harness` 去驱动本插件的 9339 实例（会被本插件的释放纪律回收）；需要真并行时给每个任务配独立浏览器实例/云浏览器。
+- 提示落点：三个工具描述（模型每轮可见）+ `web_status` 的 `shared` / `otherBrowsers` / `otherBrowserHint` 字段 + 本文档 + `browser-harness` 技能文档。
+- Linux/WSL 实例管理（v0.1.3）：`instances` 计数与「同 profile 残留清理」改走 `/proc` 精确匹配本 profile 主进程（原实现只认 `powershell.exe`，本机 ENOENT → 恒 0/空转）——只碰自己的 chromium，不动用户 Edge。
+
 ## 配置（可选，profile 插件 config 覆盖）
 
 ```yaml
@@ -51,7 +65,9 @@
 ```bash
 node scripts/build.mjs                      # src → lib（纯 JS，零编译）
 node smoke.mjs                              # 冒烟：fake ctx 捕获 register，真跑三工具
-node test/release.test.mjs                  # 真机回归：卸载/空闲/多实例三条释放路径
+                                            # 非 Windows 需显式给浏览器：node smoke.mjs lib/index.js '{"chromePath":"/usr/bin/chromium"}'
+npm test                                    # 契约回归：并发提示 + /proc 实例匹配（不启浏览器）
+node test/release.test.mjs                  # 真机回归（Windows）：卸载/空闲/多实例三条释放路径
 # 全局装配（注入器环境内）：
 dev_install_package D:/dsh/02-web-ui/dsh-web-tools
 ```

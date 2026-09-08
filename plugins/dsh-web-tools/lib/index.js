@@ -21,7 +21,7 @@
  * 可用，则本模块是它的轻量子集，运行时二选一即可。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { createServer } from 'node:net'
 import http from 'node:http'
 import path from 'node:path'
@@ -41,6 +41,71 @@ const DEFAULTS = {
   // v0.1.2 释放纪律（用户定向：「千万不要出现多后台忘了清后台防止爆炸内存」）：
   // 空闲 idleMs 后自动释放 Chrome（0=永不自动释放，纯常驻）。重建约 1–2s，远小于泄漏代价。
   idleMs: 10 * 60 * 1000,
+}
+
+/* v0.1.3 并发提示（用户定向：「帮忙在对应的地方，增加提示，来应对两个浏览器同时运行的情况」）：
+ *  本插件是**单例·单页**——一个宿主进程一个浏览器一个页面，多会话/多模型同时用就抢同一页；
+ *  另一套浏览器是 browser-harness 技能连的 Windows Edge（CDP 9222，用户可见、带登录态），
+ *  与本插件（WSL headless Chromium、独立 profile）**不共享 cookie/标签**，截图不能互证。
+ *  提示三处齐：工具描述（模型每轮都看到）+ web_status 输出（运行时读回）+ README/SKILL 文档。 */
+export const SHARED_BROWSER_HINT = '单例·单页共享：同一时刻只让一个 agent 操作浏览器——多会话/多模型并发会抢同一页（互相导航、标签被顶掉）。'
+export const OTHER_BROWSER_HINT = '另一套浏览器 browser-harness（Windows Edge，CDP 9222，用户可见窗口）与本插件（WSL headless Chromium，独立 profile）不共享 cookie/登录态/标签：两套的截图不能互证；也别用 browser-harness 去驱动本插件 9339 的实例（会被本插件回收）。'
+export const OTHER_BROWSER = { name: 'browser-harness (Windows Edge)', url: 'http://127.0.0.1:9222' }
+/** 工具描述里挂的短提示（每个请求都随工具表进上下文，保持一行）。 */
+export const SHARED_DESC = '（共享提示：本插件单例·单页，同一时刻只让一个 agent 操作；另一套浏览器是 browser-harness 的 Windows Edge/CDP 9222，两套互不相通）'
+
+/** Linux/WSL 分支：按 profile 目录匹配**主进程**（只读 /proc，不依赖 powershell）。
+ *  Windows 返回 null 走原 powershell 路径；只匹配本插件自己的浏览器进程，
+ *  绝不碰用户 Edge/其他浏览器。
+ *  ⚠ 两道精确性防线（都是实测踩出来的，2026-09-08）：
+ *   ① **可执行文件**校验（/proc/<pid>/exe 的 basename）——这是唯一可靠的防线。只按
+ *      cmdline 子串会误伤**任何**命令行里提到该路径的进程（宿主、shell、冒烟脚本自己），
+ *      实测把 smoke 进程自己 SIGKILL 了。chromePath 给了就比 basename（注意 `/usr/bin/chromium`
+ *      是包装脚本、真实 exe 是 `/usr/lib/chromium/chromium`，全路径比对会失败），
+ *      没给则只认 chrome 家族。
+ *   ② 标记必须**成对出现**：`--user-data-dir=<本 profile>`（而不是路径单独出现）+ 排除 `--type=`。
+ *  ⚠ 不要试图做 argv 元素级解析：chromium 会重写自己的 argv 内存，`/proc/<pid>/cmdline`
+ *  因此**没有 NUL 分隔**（实测 argCount=1，整条命令行挤成一个元素），只能按字符串匹配。 */
+export function profileChromePids(profileDir, chromePath) {
+  if (process.platform !== 'linux') return null
+  const wantBase = chromePath ? path.basename(chromePath) : ''
+  const chromeFamily = (b) => /^(chromium|chrome|google-chrome)(-[a-z0-9-]+)?$/.test(b)
+  const marker = '--user-data-dir=' + profileDir
+  const pids = []
+  let names = []
+  try { names = readdirSync('/proc') } catch { return pids }
+  for (const n of names) {
+    if (!/^\d+$/.test(n)) continue
+    let cmd = ''
+    try { cmd = readFileSync('/proc/' + n + '/cmdline', 'utf8') } catch { continue }
+    if (!cmd.includes(marker)) continue
+    if (cmd.includes('--type=')) continue
+    let exe = ''
+    try { exe = readlinkSync('/proc/' + n + '/exe') } catch { continue }
+    const base = path.basename(exe)
+    if (wantBase) {
+      if (base !== wantBase && !(chromeFamily(base) && chromeFamily(wantBase))) continue
+    } else if (!chromeFamily(base)) continue
+    pids.push(Number(n))
+  }
+  return pids
+}
+
+/** 探测「另一套浏览器」是否在跑（browser-harness 的 Edge CDP 端点）。只读、不控制。 */
+export function detectOtherBrowser(url = OTHER_BROWSER.url, timeoutMs = 1200) {
+  return new Promise((resolve) => {
+    const req = http.get(url + '/json/version', (res) => {
+      let d = ''
+      res.on('data', (c) => (d += c))
+      res.on('end', () => {
+        let browser = ''
+        try { browser = JSON.parse(d).Browser || '' } catch { /* 非 JSON 也算活着 */ }
+        resolve({ running: true, browser, url })
+      })
+    })
+    req.on('error', () => resolve({ running: false, url }))
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({ running: false, url, timeout: true }) })
+  })
 }
 
 function toolOutput() {
@@ -103,6 +168,10 @@ export function apply(ctx, config) {
   }
   function detectInstances() {
     try {
+      // v0.1.3：Linux/WSL 走 /proc（原实现只认 powershell.exe，本机 ENOENT → instances 恒 0，
+      // 「多例提醒」与残留回收全部空转）；Windows 保持原路径。
+      const pids = profileChromePids(cfg.profileDir, cfg.chromePath)
+      if (pids) return pids.length
       // v0.1.2：只数**主进程**。两个坑：
       //  ① 旧实现把 renderer/gpu 子进程一起数（单个 Chrome≈10 进程）→「多例提醒」永远误报、回收误杀；
       //  ② `-notmatch '--type='` 经 Node→powershell 传参会被参数解析吞掉（实测 out 为空、exit 0）——
@@ -141,10 +210,17 @@ export function apply(ctx, config) {
    * 否则残留进程与 Singleton 锁导致新实例 ECONNREFUSED（2026-08-30 实测 8 进程残留）。 */
   function killProfileChrome() {
     try {
-      const esc = String(cfg.profileDir).replace(/\\/g, '\\\\')
-      spawnSync('powershell.exe', ['-NoProfile', '-Command',
-        `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -match '${esc}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
-        { stdio: 'ignore', timeout: 15000 })
+      // v0.1.3：Linux/WSL 用 /proc 精确匹配本 profile 的 pid（不碰 Edge/其他浏览器）；
+      // Windows 保持 powershell 路径。
+      const pids = profileChromePids(cfg.profileDir, cfg.chromePath)
+      if (pids) {
+        for (const pid of pids) { try { process.kill(pid, 'SIGKILL') } catch { } }
+      } else {
+        const esc = String(cfg.profileDir).replace(/\\/g, '\\\\')
+        spawnSync('powershell.exe', ['-NoProfile', '-Command',
+          `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -match '${esc}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
+          { stdio: 'ignore', timeout: 15000 })
+      }
     } catch { }
     for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile']) {
       try { rmSync(path.join(cfg.profileDir, f), { force: true }) } catch { }
@@ -259,7 +335,7 @@ export function apply(ctx, config) {
   /* ── web_status ───────────────────────────────────────── */
   ctx.effect(() => ctx.tools.register({
     name: 'web_status',
-    description: '浏览器验证运行时状态：chrome 就绪性/端口/复用实例。载入后调用一次。',
+    description: '浏览器验证运行时状态：chrome 就绪性/端口/复用实例。载入后调用一次。' + SHARED_DESC,
     parameters: { type: 'object', properties: {} },
     output: toolOutput(),
     async execute() {
@@ -268,9 +344,13 @@ export function apply(ctx, config) {
         await ensureBrowser()
         const v = await httpGetJson(`http://127.0.0.1:${port}/json/version`)
         const inst = detectInstances()
+        const other = await detectOtherBrowser()
         return {
           ok: true, chrome: v.Browser, port, page: pageWsUrl ? 'ready' : 'lazy',
           profile: cfg.profileDir, instances: inst, idleMs: cfg.idleMs,
+          shared: SHARED_BROWSER_HINT,
+          otherBrowsers: other.running ? [{ ...OTHER_BROWSER, browser: other.browser }] : [],
+          otherBrowserHint: OTHER_BROWSER_HINT,
           resident: '空闲 ' + Math.round((cfg.idleMs || 0) / 1000) + 's 后自动释放（idleMs=0 可关闭）',
           ...(inst > 1 ? { multi: '多例提醒：检测到 ' + inst + ' 个同 profile chrome 进程——设计为单例常驻；残留旧例请重启或清理后再用' } : {}),
         }
@@ -284,7 +364,7 @@ export function apply(ctx, config) {
   /* ── web_shot ─────────────────────────────────────────── */
   ctx.effect(() => ctx.tools.register({
     name: 'web_shot',
-    description: '打开 URL 并截图（PNG 落盘）。返回图片路径与页面标题——用 read_image 看画面。用于渲染/视觉验证。',
+    description: '打开 URL 并截图（PNG 落盘）。返回图片路径与页面标题——用 read_image 看画面。用于渲染/视觉验证。' + SHARED_DESC,
     parameters: { type: 'object', properties: {
       url: { type: 'string', description: 'http(s) 或 file:// URL' },
       waitMs: { type: 'number', description: '导航后等待毫秒（默认 1200，懒加载页面适当加大）' },
@@ -320,7 +400,7 @@ export function apply(ctx, config) {
   /* ── web_dom ──────────────────────────────────────────── */
   ctx.effect(() => ctx.tools.register({
     name: 'web_dom',
-    description: '打开 URL 并回读标题与页面可读文本（截断到 maxChars）。替代 dump-dom 的断言回读；页面可自行把测试结果写进 DOM 文本。',
+    description: '打开 URL 并回读标题与页面可读文本（截断到 maxChars）。替代 dump-dom 的断言回读；页面可自行把测试结果写进 DOM 文本。' + SHARED_DESC,
     parameters: { type: 'object', properties: {
       url: { type: 'string', description: 'http(s) 或 file:// URL' },
       waitMs: { type: 'number', description: '等待毫秒（默认 1200）' },

@@ -2,10 +2,14 @@
 // 目标页用本地 file:// 临时页（零网络依赖）。用法：node smoke.mjs
 import path from 'node:path'
 import os from 'node:os'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 
-const entry = path.resolve(process.argv[2] || 'D:/dsh/02-web-ui/dsh-web-tools/lib/index.js')
+// 入口默认取本脚本旁的 lib/index.js（原写死 D:/dsh/... Windows 路径，非 Windows 必挂）；
+// 平台相关配置走第 3 个参数，如 node smoke.mjs lib/index.js '{"chromePath":"/usr/bin/chromium"}'。
+const here = path.dirname(fileURLToPath(import.meta.url))
+const entry = path.resolve(process.argv[2] || path.join(here, 'lib', 'index.js'))
+const extraCfg = process.argv[3] ? JSON.parse(process.argv[3]) : {}
 const TITLE = 'dsh-web-tools smoke 页面'
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webtools-'))
 const html = path.join(tmpDir, 'smoke.html')
@@ -33,7 +37,7 @@ const ctx = {
   on: () => {},
   provide: () => {},
 }
-mod.apply(ctx, { port: 0 })
+mod.apply(ctx, { port: 0, ...extraCfg })
 console.log('t2 apply; tools:', Object.keys(tools).join(','))
 
 const R = []
