@@ -1,0 +1,31 @@
+MIT License
+
+Copyright (c) 2026 CommonTrustProtocol · 灵枢 AEIS 工程实现（FuRongJun-1999）
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+许可说明（LICENSE NOTE）
+
+本目录（aeis/）工程实现代码以 MIT License 开源发布，可自由使用、修改、分发。
+
+协议内容（智能论 v3.2 及本仓库理论文档）的权利归属另行声明：
+协议文本可传播、可引用，修改与演绎须经协议权利方授权。
+详见上级仓库 README 与各协议文档的版本声明。
