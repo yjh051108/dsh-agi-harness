@@ -1,5 +1,23 @@
 # 更新说明
 
+## v0.3.19 — 浏览器工具全局插件 + 作用域卡片落盘 + 进程释放纪律
+
+### 新增
+- **`plugins/dsh-web-tools`（浏览器工具，全局 bundle 装配）**：`web_status` / `web_shot` / `web_dom` 三件套——CDP 直连系统 Chrome、零第三方依赖（只用 `node:` 内建）。由预设内化模块 `router-3/browser-tools.mjs` 原样搬迁（2026-09-08 用户定向：**退回插件形态并全局安装**，所有会话/所有预设常驻；预设侧装配与模块文件已移除，避免同名工具双重注册）。
+- **进程释放纪律（用户定向：「千万不要出现多后台忘了清后台防止爆炸内存」）**：
+  - 卸载/热重载 → `release('unload')`；宿主进程退出 → `process.once('exit')` 同步杀同 profile 残留；
+  - **空闲超时自动释放**（`idleMs` 默认 10min，0=关闭；重建约 1–2s）；
+  - 多实例**自动回收**（发现同 profile 主进程 >1 → 杀干净单例重建，不再只是文字提醒）。
+
+### 修复
+- **作用域卡片拨动不落盘**（用户截图实证「关掉之后又变成全选、没有保存」）：`installSection` 的 `onChange` 曾是空函数——卡片写宿主 settings 节，而插件读**文件优先**的 `closedloop-scope.json`，文件里的旧值把新值盖住。现 `onChange` 调用 `mirrorScopeToFile()` 把宿主活值镜像进文件（文件优先口径不变，手动改文件仍生效）。
+- **`detectInstances` 数错对象**：旧实现把 Chrome 的 renderer/gpu 子进程一起数（单个 Chrome≈10 进程）→「多例提醒」永远误报、回收逻辑会误杀。现只数主进程（`--type=` 是子进程标志）。
+- **PowerShell 传参坑**：`-notmatch '--type='` 经 Node→powershell 传参会被参数解析吞掉（实测输出为空、exit 0）——改为 PowerShell 只取命令行、过滤在 JS 里做。
+
+### 验证
+- `dsh-web-tools`：冒烟 3/3（真跑 Chrome 出 PNG）+ 真机释放回归 **3/3**（卸载→进程数 0；空闲 1.5s→0；多实例 before=2→after=1 单例）。
+- closedloop：全量 **459/459**；新增 `scope-card.test.mjs` 2 条（含旧 bug 复现）；变异审计 73/73 杀死、等价 9；棘轮十一模块 1.0；机检全家 23/23。
+
 ## v0.3.18 — 在岗介入率（介入率口径修正）
 
 ### 修复

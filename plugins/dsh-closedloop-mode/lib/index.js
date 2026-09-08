@@ -52,7 +52,7 @@ import { lqrReadout } from './lqr-organ.js'
 import { getModelFingerprint } from './gate-core.js'
 import { PERSONA } from './persona.js'
 import { claim, release } from './quota-organ.js'
-import { presetAllowed, effectiveScopeConfig, writeScopeFile, setLiveScope, validateScopeValue, listPresets, SCOPE_NS } from './scope.js'
+import { presetAllowed, effectiveScopeConfig, writeScopeFile, setLiveScope, validateScopeValue, listPresets, mirrorScopeToFile, SCOPE_NS } from './scope.js'
 import { stateFace, weightsFace, stepReminder, batchConfirmLine } from './propose-text.js'
 import { offReceipt, VERSION } from './inject-text.js'
 import {
@@ -189,7 +189,9 @@ export function apply(ctx, config) {
     ctx.settings.installSection(ctx, SCOPE_NS, ScopeSchema, { disabled: Array.isArray(config.disabled) ? config.disabled : [] }, {
       setSource: (source) => setLiveScope(source),
       validate: (v) => validateScopeValue(v),
-      onChange: () => {},
+      // v0.8.28：卡片写入后把宿主活值镜像进活值文件——否则「文件优先」会把新值盖回旧值
+      // （案底：onChange 空函数 → 拨完又变全选、看起来没保存）。
+      onChange: () => { try { mirrorScopeToFile() } catch { /* 非法活值不落盘 */ } },
     })
   } catch (e) { console.warn('[closedloop] 作用域节注册失败（开关回退文件/配置层）:', String(e?.message || e).slice(0, 80)) }
   const offArmed = new Map() // off 双确认窗口（v0.3.1⑥：单条命令误触不清账）

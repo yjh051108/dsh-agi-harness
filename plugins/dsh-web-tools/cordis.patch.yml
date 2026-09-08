@@ -1,0 +1,6 @@
+# dsh-web-tools bundle 层：插入插件行。
+# 浏览器工具（web_status/web_shot/web_dom）——全局常驻，所有会话/预设可见。
+- insert:
+    - id: dsh-web-tools
+      name: '@dsh-external/dsh-web-tools'
+      config:

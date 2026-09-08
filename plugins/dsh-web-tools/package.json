@@ -1,0 +1,34 @@
+{
+  "name": "@dsh-external/dsh-web-tools",
+  "version": "0.1.2",
+  "description": "浏览器工具（web_status/web_shot/web_dom）：CDP 直连系统 Chrome，零第三方依赖。全局 bundle 装配——所有会话/所有预设常驻（2026-09-08 用户定向：由预设内化退回插件形态）。",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "scripts",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.0.1-rc"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "smoke": "node smoke.mjs"
+  }
+}

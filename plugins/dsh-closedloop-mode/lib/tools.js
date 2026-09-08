@@ -122,7 +122,14 @@ export function normAcceptItem(x) {
  *  env DSH_SESSION_CWD/DSH_AGENT_CWD → 从 DSH_SESSION_JSONL 目录名解码（--D-dsh-- → D:/dsh）→ 宿主 cwd。 */
 export const sessionCwd = (exec) => {
   const c = String(exec?.agent?.session?.cwd || '').trim()
-  return c || decodeSessionCwd() || workspaceFromSessionId(exec?.agent?.session?.id) || process.cwd()
+  if (c) return c
+  // v0.8.21 实测案底（非 ASCII 工作区 /4.1flash大战fable5.1/月球撞击地球）：段解码未还原 ~XXXX 转义
+  // → cwd 指向不存在路径 → 所有 execFile 直接 ENOENT（判据 dry-run/探针全线「跑不了」，非「判据红」）。
+  // 双保险：解码已补转义还原（见 decodeWorkspaceSegment），此处再加存在性闸，坏候选逐级弃用。
+  for (const cand of [decodeSessionCwd(), workspaceFromSessionId(exec?.agent?.session?.id)]) {
+    if (cand && existsSync(cand)) return cand
+  }
+  return process.cwd()
 }
 
 /** 工作区目录段解码（纯函数可测）：'--D-dsh--' → 'D:/dsh'；非编码段=空串。 */
@@ -130,7 +137,9 @@ export function decodeWorkspaceSegment(seg) {
   const s = String(seg || '')
   if (!s.startsWith('--') || !s.endsWith('--') || s.length <= 4) return ''
   const inner = s.slice(2, -2)
-  return inner.replace(/^([A-Za-z])-/, '$1:/').split('-').join('/')
+  const raw = inner.replace(/^([A-Za-z])-/, '$1:/').split('-').join('/')
+  // v0.8.21：目录段对非 ASCII 用 ~XXXX（4 位十六进制码点）转义，旧实现不还原 → 解码出死路径。
+  return raw.replace(/~([0-9A-Fa-f]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
 }
 
 /** 会话工作区解码（纯函数可测）：env 显式值优先；否则从 DSH_SESSION_JSONL 的 sessions/<seg>/ 段还原。 */

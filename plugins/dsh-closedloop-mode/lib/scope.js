@@ -90,3 +90,12 @@ export function getLiveScope() { try { return liveOverride ? liveOverride() : nu
 
 /** 生效配置：文件活值 > 进程覆盖 > 挂载 config。 */
 export function effectiveScopeConfig(config) { return liveScopeFromFile() || getLiveScope() || config }
+
+/** v0.8.28 卡片落盘镜像（案底：onChange 曾是空函数）：宿主 settings 节写入后调用，
+ *  把宿主活值同步进活值文件。旧行为下卡片写宿主、插件读文件——文件里的旧值把新值盖住，
+ *  表现为「关掉之后又变成全选、没有保存」。非法活值不写（抛错由调用方吞，不污染已存值）。 */
+export function mirrorScopeToFile() {
+  const v = getLiveScope()
+  if (!v) return null
+  return writeScopeFile(v)
+}
