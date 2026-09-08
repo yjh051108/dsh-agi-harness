@@ -79,7 +79,9 @@ test('r5 shell 语法命令回落 execSync（兼容位）', () => {
 
 test('r10 命令 cwd 生效：opts.cwd 传入后进程在指定目录执行（v0.8.6 会话工作区基准）', () => {
   const out = execCmdSync('node -e "console.log(process.cwd())"', { timeout: 8000, cwd: TMP })
-  assert.equal(path.resolve(out.trim()), path.resolve(TMP))
+  // 跨平台（issue #3）：macOS 的 os.tmpdir() 是 /var/... 而子进程 cwd 报 /private/var/...
+  // （/var 是 /private/var 的软链）——path.resolve 只做字符串规范化、不解析软链，两侧都过 realpathSync 再比。
+  assert.equal(fs.realpathSync(out.trim()), fs.realpathSync(TMP))
 })
 
 process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {} })
