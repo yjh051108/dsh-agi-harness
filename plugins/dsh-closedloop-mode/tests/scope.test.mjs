@@ -1,55 +1,52 @@
 /**
- * scope.test — v0.8.7 预设作用域：默认 all 恒真（零变化）；presets 模式按 agentPreset 过滤（fail-closed）。
+ * scope.test — v0.8.9 逐预设开关语义：默认全开；disabled 名单关闭；拨即生效（文件/覆盖两级活值）。
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-process.env.DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-scope-')) // 活值文件全程临时（真盘零接触）
-import { presetAllowed, effectiveScopeConfig, setLiveScope, validateScopeValue, writeScopeFile, liveScopeFromFile } from '../src/scope.js'
+process.env.DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-scope-')) // 活值文件与预设发现全程临时（真盘零接触）
+import { presetAllowed, effectiveScopeConfig, setLiveScope, validateScopeValue, writeScopeFile, liveScopeFromFile, listPresets, NO_PRESET } from '../src/scope.js'
 
-test('s1 默认 all（含未配置/空配置）恒真——现有用户零变化', () => {
-  const s = { agentPreset: 'router-standard' }
-  assert.equal(presetAllowed(s, undefined), true, '无配置=全局')
-  assert.equal(presetAllowed(s, {}), true, '空配置=全局')
-  assert.equal(presetAllowed(s, { presetScope: 'all' }), true, '显式 all=全局')
-  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, { presetScope: 'all' }), true)
+test('s1 默认全开：空/缺字段/无配置一律放行（现有用户零变化）', () => {
+  assert.equal(presetAllowed({ agentPreset: 'router-standard' }, undefined), true, '无配置=全开')
+  assert.equal(presetAllowed({ agentPreset: 'router-standard' }, {}), true, '缺 disabled 字段=全开')
+  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, { disabled: [] }), true, '空名单=全开')
 })
 
-test('s3 设置页活值优先于挂载 config（进程覆盖，清空回退）', () => {
-  setLiveScope({ presetScope: 'presets', presets: ['closedloop-full'] })
-  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, effectiveScopeConfig({ presetScope: 'all' })), true, '活值收紧生效（挂载 all 被覆盖）')
-  assert.equal(presetAllowed({ agentPreset: 'other' }, effectiveScopeConfig({ presetScope: 'all' })), false)
-  setLiveScope(null)
-  assert.equal(effectiveScopeConfig({ presetScope: 'presets', presets: ['x'] }).presetScope, 'presets', '清活值回退挂载 config')
-  setLiveScope(() => ({ presetScope: 'presets', presets: ['closedloop-full'] }))
-  assert.equal(presetAllowed({ agentPreset: 'other' }, effectiveScopeConfig({ presetScope: 'all' })), false, '函数形状（installSection setSource）同样生效')
-  setLiveScope(null)
+test('s2 disabled 名单：名单内关闭、名单外照常，无预设会话用 (无预设) 键', () => {
+  const cfg = { disabled: ['router-spec', NO_PRESET] }
+  assert.equal(presetAllowed({ agentPreset: 'router-spec' }, cfg), false, '名单内=静默')
+  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, cfg), true, '名单外=启用')
+  assert.equal(presetAllowed({}, cfg), false, '无 preset 字段归 (无预设) 且被关')
+  assert.equal(presetAllowed({}, { disabled: ['router-spec'] }), true, '未关 (无预设) 则放行')
+  assert.equal(listPresets()[0], NO_PRESET, '预设发现：(无预设) 恒列首位，目录缺失不抛')
 })
 
-test('s4 validateScopeValue：非法值拒写（不污染活值）', () => {
-  assert.doesNotThrow(() => validateScopeValue({ presetScope: 'all', presets: [] }))
-  assert.throws(() => validateScopeValue({ presetScope: 'weird', presets: [] }), /all\|presets/)
-  assert.throws(() => validateScopeValue({ presetScope: 'presets', presets: ['  '] }), /非空字符串/)
+test('s3 活值优先于挂载 config（覆盖与函数两形状，清空回退）', () => {
+  setLiveScope({ disabled: ['router-react'] })
+  assert.equal(presetAllowed({ agentPreset: 'router-react' }, effectiveScopeConfig({ disabled: [] })), false, '活值收紧压过挂载全开')
+  setLiveScope(() => ({ disabled: [] }))
+  assert.equal(presetAllowed({ agentPreset: 'router-react' }, effectiveScopeConfig({ disabled: ['x'] })), true, '函数形状（setSource）同样生效')
+  setLiveScope(null)
+  assert.deepEqual(effectiveScopeConfig({ disabled: ['keep'] }).disabled, ['keep'], '清覆盖回退挂载 config')
+})
+
+test('s4 validateScopeValue：只认 disabled 数组，非法拒写且去重', () => {
+  assert.deepEqual(validateScopeValue({ disabled: [] }), { disabled: [] })
+  assert.deepEqual(validateScopeValue({ disabled: ['a', 'a', ' b '] }), { disabled: ['a', 'b'] }, '去重+trim')
+  assert.throws(() => validateScopeValue({ disabled: 'x' }), /字符串数组/)
+  assert.throws(() => validateScopeValue({ disabled: [''] }), /字符串数组/)
   assert.throws(() => validateScopeValue(null), /对象/)
 })
 
-test('s2 presets 模式：按 agentPreset 过滤，缺字段 fail-closed，大小写敏感直等', () => {
-  const cfg = { presetScope: 'presets', presets: ['closedloop-full'] }
-  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, cfg), true, '名单内=启用')
-  assert.equal(presetAllowed({ agentPreset: 'router-standard' }, cfg), false, '名单外=静默')
-  assert.equal(presetAllowed({}, cfg), false, '无 preset 字段=fail-closed')
-  assert.equal(presetAllowed(undefined, cfg), false, '无会话=静默')
-  assert.equal(presetAllowed({ agentPreset: 'closedloop-full' }, { presetScope: 'presets', presets: [] }), false, '空名单=全静默')
-})
-
-test('s5 活值文件读写：保存即生效免重启，非法值拒写不污染已存值', () => {
-  const saved = writeScopeFile({ presetScope: 'presets', presets: ['closedloop-full'] })
-  assert.deepEqual(saved, { presetScope: 'presets', presets: ['closedloop-full'] })
-  assert.equal(presetAllowed({ agentPreset: 'other' }, effectiveScopeConfig({ presetScope: 'all' })), false, '文件活值压过挂载 all')
-  assert.throws(() => writeScopeFile({ presetScope: 'bad', presets: [] }), /all\|presets/)
-  assert.equal(liveScopeFromFile().presetScope, 'presets', '非法写失败不污染已存值')
-  writeScopeFile({ presetScope: 'all', presets: [] })
-  assert.equal(presetAllowed({ agentPreset: 'anything' }, effectiveScopeConfig({ presetScope: 'presets' })), true, '改回 all 即全局')
+test('s5 文件活值读写：保存即生效免重启，非法写失败不污染已存值', () => {
+  const saved = writeScopeFile({ disabled: ['router-3'] })
+  assert.deepEqual(saved, { disabled: ['router-3'] })
+  assert.equal(presetAllowed({ agentPreset: 'router-3' }, effectiveScopeConfig({ disabled: [] })), false, '文件活值压过挂载')
+  assert.throws(() => writeScopeFile({ disabled: 42 }), /字符串数组/)
+  assert.deepEqual(liveScopeFromFile().disabled, ['router-3'], '非法写失败不污染已存值')
+  writeScopeFile({ disabled: [] })
+  assert.equal(presetAllowed({ agentPreset: 'router-3' }, effectiveScopeConfig({ disabled: ['z'] })), true, '清空=回到全开')
 })

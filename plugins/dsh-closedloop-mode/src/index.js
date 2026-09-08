@@ -52,7 +52,7 @@ import { lqrReadout } from './lqr-organ.js'
 import { getModelFingerprint } from './gate-core.js'
 import { PERSONA } from './persona.js'
 import { claim, release } from './quota-organ.js'
-import { presetAllowed, effectiveScopeConfig, writeScopeFile, setLiveScope, validateScopeValue, SCOPE_NS } from './scope.js'
+import { presetAllowed, effectiveScopeConfig, writeScopeFile, setLiveScope, validateScopeValue, listPresets, SCOPE_NS } from './scope.js'
 import { stateFace, weightsFace, stepReminder, batchConfirmLine } from './propose-text.js'
 import { offReceipt, VERSION } from './inject-text.js'
 import {
@@ -68,7 +68,7 @@ export const name = 'dsh-closedloop-mode'
 /** 工具集唯一真相（v0.5.4：十四名，audit_dispatch 入列——宿主轮转派发消选择偏差；注册漂移 warn 兜底）。 */
 export const TOOL_NAMES = ['super_task_completion_mode', 'decompose', 'freeze', 'measure_propose', 'probe_record', 'optimal_declare', 'optimal_converge', 'audit_record', 'cost_audit', 'audit_dispatch', 'optimal_rollback', 'optimal_stack', 'revise_do', 'delivery_feedback', 'terminal_check']
 export const inject = ['commands', 'userQuestions', 'webServer', 'tools', 'agents', 'sessions', 'settings']
-export const Config = z.object({ autoStart: z.boolean().default(true), writeGate: z.boolean().default(true), presetScope: z.string().default('all'), presets: z.array(z.string()).default(['closedloop-full']) }) // r67 autoStart 默认开启：首条真人任务在发给模型前自动接管；仅显式 false 才关闭。writeGate 默认开。
+export const Config = z.object({ autoStart: z.boolean().default(true), writeGate: z.boolean().default(true), disabled: z.array(z.string()).default([]) }) // r67 autoStart 默认开启：首条真人任务在发给模型前自动接管；仅显式 false 才关闭。writeGate 默认开。
 /** 真人帧判类器（介入率同源）：kind=user+rpcId，排 goal 自动续单与 plugin 注入帧。 */
 export function isHumanFrame(ev) {
   const s = ev?.data?.source
@@ -190,8 +190,8 @@ export function apply(ctx, config) {
   // 案底：惰性 ctx.inject(['settings']) 让新 fiber 挂未决依赖、就绪信号永不完成→reload 无界等待卡死。
   // 卡片派发规则（官方源码注释实证）：宿主不服务该命名空间 → 卡片永不显示，故 installSection 必需。
   try {
-    const ScopeSchema = z.object({ presetScope: z.string().default('all'), presets: z.array(z.string()).default(['closedloop-full']) })
-    ctx.settings.installSection(ctx, SCOPE_NS, ScopeSchema, { presetScope: config.presetScope || 'all', presets: Array.isArray(config.presets) ? config.presets : ['closedloop-full'] }, {
+    const ScopeSchema = z.object({ disabled: z.array(z.string()).default([]) })
+    ctx.settings.installSection(ctx, SCOPE_NS, ScopeSchema, { disabled: Array.isArray(config.disabled) ? config.disabled : [] }, {
       setSource: (source) => setLiveScope(source),
       validate: (v) => validateScopeValue(v),
       onChange: () => {},
@@ -269,7 +269,7 @@ export function apply(ctx, config) {
             for await (const ch of req) body += ch
             send({ ok: true, ...writeScopeFile(JSON.parse(body || '{}')) })
           } else {
-            send({ ok: true, ...effectiveScopeConfig({ presetScope: 'all', presets: [] }) })
+            send({ ok: true, presets: listPresets(), ...effectiveScopeConfig({ disabled: [] }) })
           }
         } catch (e) { send({ ok: false, error: String(e?.message || e).slice(0, 120) }, 400) }
       },

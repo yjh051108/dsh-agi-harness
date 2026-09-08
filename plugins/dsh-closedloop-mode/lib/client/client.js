@@ -172,35 +172,35 @@ window.__ModuleLoader__.load({
       return Wrapped
     }
 
-    /* ---- 设置页卡：预设作用域（v0.8.8，绑 settingsScope 命名空间 'closedloop'——宿主服务该节才派发卡片）---- */
+    /* ---- 设置页卡：逐预设开关（v0.8.9 开发者定向：拨即生效，无保存按钮）---- */
     let scopeSvc = null
+    const SCOPE_API = "/graded-mode/api/scope"
     function ScopeCard() {
-      const [draft, setDraft] = useState(null)
-      if (!scopeSvc) return e("div", { className: "graded-hint" }, "（作用域开关不可用：本部署未组合设置服务）")
-      let val = null
-      try {
-        const snap = scopeSvc.getSnapshot && scopeSvc.getSnapshot()
-        val = snap && (snap.value || snap)
-      } catch { /* 未服务=空态 */ }
-      const cur = draft || (val ? { presetScope: val.presetScope || "all", presets: (Array.isArray(val.presets) ? val.presets : []).join(", ") } : { presetScope: "all", presets: "closedloop-full" })
-      const save = () => {
-        const next = { presetScope: cur.presetScope, presets: String(cur.presets || "").split(",").map((x) => x.trim()).filter(Boolean) }
-        try { scopeSvc.set(next); setDraft(null) } catch (err) { setDraft({ ...cur, err: String((err && err.message) || err).slice(0, 60) }) }
+      const [rows, setRows] = useState(null) // { presets: [], disabled: [] }
+      const [err, setErr] = useState(null)
+      useEffect(() => {
+        let live = true
+        fetch(SCOPE_API).then((r) => r.json()).then((j) => { if (live && j && j.ok) setRows({ presets: j.presets || [], disabled: Array.isArray(j.disabled) ? j.disabled : [] }) }).catch(() => { if (live) setRows({ presets: [], disabled: [] }) })
+        return () => { live = false }
+      }, [])
+      const toggle = (name, on) => {
+        setRows((prev) => {
+          const cur = prev || { presets: [], disabled: [] }
+          const next = { ...cur, disabled: on ? cur.disabled.filter((x) => x !== name) : [...new Set([...cur.disabled, name])] }
+          try { if (scopeSvc && scopeSvc.set) scopeSvc.set({ disabled: next.disabled }) } catch (e2) { setErr(String((e2 && e2.message) || e2).slice(0, 60)) }
+          return next
+        })
+        setErr(null)
       }
-      return e("div", { style: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13 } },
-        e("div", { style: { fontWeight: 600 } }, "闭环 · 预设作用域"),
-        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
-          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "all", onChange: () => setDraft({ ...cur, presetScope: "all", err: null }) }), "全局生效（所有预设）"),
-        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
-          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "presets", onChange: () => setDraft({ ...cur, presetScope: "presets", err: null }) }), "仅指定预设"),
-        cur.presetScope === "presets" && e("input", {
-          value: cur.presets, placeholder: "closedloop-full", style: { fontSize: 12, padding: "3px 6px" },
-          onChange: (ev) => setDraft({ ...cur, presets: ev.target.value, err: null }),
-        }),
-        e("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
-          e("button", { className: "graded-badge", onClick: save }, "保存"),
-          cur.err && e("span", { className: "graded-hint", style: { color: "#c0392b" }, title: cur.err }, "保存失败：见悬停")),
-        e("div", { className: "graded-hint" }, "作用域外会话零注入零接管；/optimal 命令不受限；名单逗号分隔，保存即生效（免重启）"))
+      if (!rows) return e("div", { className: "graded-hint" }, "读取预设清单中…")
+      return e("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 13 } },
+        e("div", { style: { fontWeight: 600, marginBottom: 2 } }, "闭环 · 预设作用域"),
+        rows.presets.map((name) => e("label", { key: name, style: { display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" } },
+          e("span", null, name),
+          e("input", { type: "checkbox", checked: !rows.disabled.includes(name), onChange: (ev) => toggle(name, ev.target.checked) }))),
+        rows.presets.length === 0 && e("div", { className: "graded-hint" }, "未发现预设目录"),
+        err && e("div", { className: "graded-hint", style: { color: "#c0392b" }, title: err }, "写入失败：见悬停"),
+        e("div", { className: "graded-hint" }, "开=该预设启用闭环；关=零注入零接管（/optimal 命令仍可手动开）"))
     }
 
     const inject = ["slots", "settingsScope"]
