@@ -144,6 +144,10 @@ export function GraphView({ t, sessionId }: GraphViewProps) {
         // 两阶段布局（组件级排布 → 成员级展开）：布局保持自然尺度，
         // 视图经 fitTransform 缩放适配；参数经 95 节点压力图扫描定稿
         // （聚团比 4.9、零重叠、边距≈110）
+        // ⚠️ width/height 是 ForceLayoutOptions 的必填项：缺省时
+        // simulate 的 cx=width/2 变 NaN，全部节点坐标退化为 NaN（图谱空白）。
+        width: VIEW_W,
+        height: VIEW_H,
         iterations: 250,
         repulsionScale: 0.25,
         springScale: 2.0,

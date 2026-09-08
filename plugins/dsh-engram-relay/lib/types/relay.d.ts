@@ -109,6 +109,20 @@ export declare class EngramRelay {
     /** 当前工作目录（分层准入：project 层按 cwd 过滤；turn-stopping 持续追踪）。 */
     currentCwd: string | null;
     /**
+     * 解析查看者工作目录（分层准入中 project 层的边界）。
+     *
+     * 优先按会话解析：agents 服务 → 该会话 header.cwd（与图谱 API
+     * graph-api.ts:resolveViewer 同一口径）；再回退到最近一次 turn-stopping
+     * 捕获的 currentCwd；最后回退到 store 里最近写入的 project 层节点所属
+     * 项目（热重载后 currentCwd 尚未捕获时的兜底）。
+     *
+     * ⚠️ 不能只用 currentCwd：它是进程级单字段，任何会话的 turn-stopping
+     * 都会覆盖它（下方写入处），多会话并发时后写者赢——拿它当每个会话的
+     * viewer.cwd 会让另一会话的 project 层记忆被错误过滤（表现为 wake
+     * items=0）。
+     */
+    resolveViewerCwd(sessionId?: string): string | undefined;
+    /**
      * 供工具使用的唤醒查询入口。
      * @param viewer - 查看者视角（分层准入：{ sessionId, cwd }）。
      * @param layer - 可选层过滤（逗号分隔如 'global,project'；缺省不过滤，

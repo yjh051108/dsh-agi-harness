@@ -118,7 +118,7 @@ export class LingshuSupervisor {
             this.weSpawned = false;
             this.lastHealth = false;
             this.lastHealthAt = Date.now();
-            this.log(`灵枢脚本不存在（${this.script}）——降级为纯算法模式；如需语义服务请配置 pythonPath 与灵枢运行集`);
+            this.log('灵枢脚本不存在——降级为纯算法模式；如需语义服务请配置 pythonPath 与灵枢运行集');
             return;
         }
         try {
@@ -133,7 +133,8 @@ export class LingshuSupervisor {
             const deadline = Date.now() + this.readyTimeoutMs;
             while (Date.now() < deadline) {
                 await sleep(300);
-                if (spawnFail.err) throw spawnFail.err;
+                if (spawnFail.err)
+                    throw spawnFail.err;
                 if (await this.health()) {
                     this.lastHealth = true;
                     this.lastHealthAt = Date.now();
@@ -150,7 +151,9 @@ export class LingshuSupervisor {
             this.weSpawned = false;
             this.lastHealth = false;
             this.lastHealthAt = Date.now();
-            this.log(`灵枢服务自动拉起失败: ${String(e).slice(0, 120)}`);
+            const code = String(e?.code ?? '');
+            const hint = code.includes('ENOENT') && this.opts.pythonPath === 'python' ? '（Linux/macOS 请把 pythonPath 配为 python3）' : '';
+            this.log(`灵枢服务自动拉起失败: ${String(e).slice(0, 120)}${hint}`);
         }
     }
     /** 降级说明（verify/respond 工具面展示；不抛裸 TypeError）。 */
@@ -191,5 +194,3 @@ export class LingshuSupervisor {
         }
     }
 }
-
-

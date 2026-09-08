@@ -19,6 +19,7 @@
  */
 
 import { spawn, type SpawnOptions } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -140,7 +141,7 @@ export class LingshuSupervisor {
   private async tryStart(): Promise<void> {
     // 案底 issue #1（JJLLKKDD）：spawn 找不到可执行文件触发的是 ChildProcess 异步 'error' 事件，
     // try/catch 接不住；无监听 → Unhandled 'error' → 杀死整个宿主进程。必须挂 on('error') 入盒。
-    const spawnFail = { err: null }
+    const spawnFail: { err: Error | null } = { err: null }
     const doSpawn = this.opts.spawnFn ?? ((cmd: string, args: string[], o: SpawnOptions): SpawnHandle => {
       const child = spawn(cmd, args, o)
       child.on('error', (err) => { spawnFail.err = err })
@@ -182,7 +183,7 @@ export class LingshuSupervisor {
       this.weSpawned = false
       this.lastHealth = false
       this.lastHealthAt = Date.now()
-      const code = String(e && e.code || '')
+      const code = String((e as { code?: unknown } | null)?.code ?? '')
       const hint = code.includes('ENOENT') && this.opts.pythonPath === 'python' ? '（Linux/macOS 请把 pythonPath 配为 python3）' : ''
       this.log(`灵枢服务自动拉起失败: ${String(e).slice(0, 120)}${hint}`)
     }

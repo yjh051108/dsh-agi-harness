@@ -1,0 +1,16 @@
+{
+  // client 侧类型门（npm run typecheck 的第二段）。
+  //  - jsx react-jsx + DOM lib：GraphView.tsx 是 React 组件，用 DOM API；
+  //  - allowImportingTsExtensions：源码显式 import './force.ts'（tsdown 打包，
+  //    运行时由打包器解析，NodeNext 会误报 TS5097）；
+  //  - noEmit：只做类型检查，client 产物由 tsdown 出（lib/client.js）。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/client/**/*"],
+  "exclude": []
+}
