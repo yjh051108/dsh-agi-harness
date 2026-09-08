@@ -189,18 +189,62 @@ export function snapshotAll(model = 'default') {
   return snap
 }
 
+/** YAML 标量解析（v0.8.20 协议化）：去行尾注释（引号内不切）+ 成对引号剥离（含 \" 与 '' 转义）。
+ *  旧实现 `([^#\r\n]+)` 对 `model: "deepseek-chat"` 会把引号带进指纹——同一模型被算成两个模型，分账错位。 */
+export function yamlScalar(raw) {
+  let s = String(raw ?? '').trim()
+  let q = null
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (q) {
+      if (ch === '\\' && q === '"') { i++; continue }
+      if (ch === q) q = null
+      continue
+    }
+    if (ch === '"' || ch === "'") { q = ch; continue }
+    if (ch === '#' && (i === 0 || /\s/.test(s[i - 1]))) { s = s.slice(0, i).trim(); break }
+  }
+  if (s.length >= 2 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+    const inner = s.slice(1, -1)
+    s = s[0] === '"' ? inner.replace(/\\(["\\])/g, '$1') : inner.replace(/''/g, "'")
+  }
+  return s.trim()
+}
+
+/** 内联流映射 `{provider: x, model: y}` → 对象（v0.8.20：旧实现只认缩进块形态，内联写法读不到指纹）。 */
+export function inlineFlowMap(raw) {
+  const m = /^\{(.*)\}$/s.exec(String(raw ?? '').trim())
+  if (!m) return null
+  const out = {}
+  for (const part of m[1].split(',')) {
+    const i = part.indexOf(':')
+    if (i < 0) continue
+    const k = yamlScalar(part.slice(0, i))
+    const v = yamlScalar(part.slice(i + 1))
+    if (k) out[k] = v
+  }
+  return out
+}
+
 // ── 模型指纹 ──
 export function getModelFingerprint() {
-  // settings.yaml 不是 JSON。只取 agent-default-model 的两个标量，避免引入 YAML 依赖。
+  // settings.yaml 不是 JSON。只取 agent-default-model 的 provider/model 两个标量，避免引入 YAML 依赖。
+  // v0.8.20：支持带引号值、行尾注释、内联流映射 `{provider: x, model: y}` 三种写法。
   try {
     const lines = readFileSync(join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'settings.yaml'), 'utf8').split(/\r?\n/)
     let inDefault = false, provider = '', model = ''
     for (const line of lines) {
-      if (/^agent-default-model:\s*$/.test(line)) { inDefault = true; continue }
+      const head = /^agent-default-model:\s*(.*)$/.exec(line)
+      if (head) {
+        const inline = inlineFlowMap(head[1])
+        if (inline) { provider = inline.provider || ''; model = inline.model || ''; break }
+        inDefault = head[1].trim() === ''
+        continue
+      }
       if (!inDefault) continue
       if (/^\S/.test(line)) break
-      provider ||= line.match(/^\s+provider:\s*([^#\r\n]+)/)?.[1]?.trim() || ''
-      model ||= line.match(/^\s+model:\s*([^#\r\n]+)/)?.[1]?.trim() || ''
+      provider ||= yamlScalar((/^\s+provider:\s*(.*)$/.exec(line) || [])[1] || '')
+      model ||= yamlScalar((/^\s+model:\s*(.*)$/.exec(line) || [])[1] || '')
     }
     if (provider && model) return `${provider}:${model}`
   } catch { /* 回退到显式环境指纹 */ }

@@ -32,16 +32,30 @@
 
 **依据**：`grep` 全仓正则后，仍未协议化的高风险点：
 
-1. `src/gate-core.js` 用正则解析 `settings.yaml`（`/^\s+provider:\s*([^#\r\n]+)/`）——YAML 缩进/引号/多行变体会漏读，影响模型指纹（引号值会把引号带进指纹）。
-2. `src/run-cmd.js` 引号剥离 `/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g`——嵌套/转义边界未覆盖测试。
+1. `src/optimal-engine.js` 的 legacy `agreed` 字符串路径（`extractAgreed`）——结构化 `agreedPairs` 已优先，但旧字符串路径仍是正则反解（兼容保留，仅存量账本触发）。
+2. `src/tools.js` 的 `hasShellSyntax` 引号剥离——不配对引号会让余下内容按壳语法处理（方向 fail-safe：多拒不少拒，暂不改）。
 
 **验证**：每条修完补对应单测（先写「旧实现误判」的实证用例，再写新行为）。
 
+## P1 · 测量覆盖扩面（当前 6/36 文件）
+
+**依据**：`scripts/mutation-audit.mjs` 的 `TARGETS` 现为 `write-gate / scope / optimal-engine / intent / mode-state / tools`。下一批候选：`gate-core.js`、`run-cmd.js`（两者已有自包含测试，接入成本低）、`audit-dispatch.js`、`judge.js`。
+
+**做法**：加目标 → 跑审计 → 幸存变异逐条处置（补断言或入 `equivalents.json` 带机械理由）。**映射只收沙箱自包含测试**（不 import 插件入口 `index.js`）。
+
+**验证**：`node scripts/check-mutation-ledger.mjs` 退出 0，棘轮新模块基线 ≥ 既有基线。
+
+## P2 · 弱杀检测（white-box 测试的游戏口）
+
+**依据**：杀死率只统计「测试是否变红」，不区分「红是因为断言了行为」还是「红是因为断言了实现细节」。当前 38 个变异全部「被杀」，但**没有机制证明这些断言是语义断言**。
+
+**做法**（候选）：标记「只断言 truthy/长度/不抛错」的弱断言，比例进账本。
+
+**验证**：账本新增 `weakKills` 字段，对已知弱断言样本能正确标记。**已知风险**：静态判定会误伤（`assert.ok(x)` 有时就是正确断言）——宁可只做报告，不直接扣分。
+
 ## P2 · 判据/探针运行时已修项的回填测试
 
-**依据**：v0.3.5 修了三处运行时根因（判据 cwd 回退链、判据超时可配、`optimal_converge` 落单漏传 cwd），其中**只有 cwd 回退链有单测**（`tests/infra-cwd.test.mjs` 3 条）。「落单漏传 cwd」这类**调用点漏参**目前只能靠真跑发现。
-
-**做法**：为 `trySettleGroups` 调用点加回归测试（用临时 cwd + 相对路径判据），或引入静态检查（grep 调用点参数个数）。
+**依据**：v0.3.5 修了三处运行时根因，其中**只有 cwd 回退链有单测**。「落单漏传 cwd」这类**调用点漏参**目前只能靠真跑发现。
 
 **验证**：故意去掉一次 `sessionCwd(exec)` 参数，测试必须变红。
 
@@ -51,4 +65,4 @@
 
 ## 已闭合（避免重复劳动）
 
-- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js` 与 `mode-state.js` 纳保变异审计 · 棘轮等价变异不计分母 · 回炉分层协议化（`discrepancyCodes`）· 真人签收通道协议化（信封 + token 规范化）· 交付反馈取证归一/含混拒收/信封 · 探针 token 符号位与指数。
+- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js`/`mode-state.js`/`tools.js` 纳保变异审计 · 棘轮等价变异不计分母 · 回炉分层协议化（`discrepancyCodes`）· 真人签收通道协议化（信封 + token 规范化）· 交付反馈取证归一/含混拒收/信封 · 探针 token 符号位与指数 · YAML 标量解析（引号/注释/内联流映射）· argv 单遍分词器。

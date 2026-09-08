@@ -14,11 +14,27 @@ function hasShellSyntax(c) {
   return /[|&<>]/.test(outside)
 }
 
-const tokenize = (s) => {
+/** argv 分词器（v0.8.20 单遍扫描）：零壳协议的**执行入口**——分词错=命令跑错。
+ *  旧实现 `/"([^"]+)"|'([^']+)'|(\S+)` 两处缺陷：①`+` 要求非空，空引号参数 `""` 退化成带引号 token；
+ *  ②双引号内转义引号 `"a\"b"` 被截断成两截。现按字符扫描：引号仅在**token 起点**生效（Windows 路径里的
+ *  撇号如 C:\it's\x.mjs 保持单 token，旧行为不破），双引号内支持 \\ 与 \" 转义，空引号产出空串 token。 */
+export function tokenize(s) {
   const out = []
-  const re = /"([^"]+)"|'([^']+)'|(\S+)/g
-  let m
-  while ((m = re.exec(s))) out.push(m[1] || m[2] || m[3])
+  const src = String(s ?? '')
+  let cur = '', q = null, started = false
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (q) {
+      // 只认 \" 与 \\ 两种转义——其余反斜杠是字面量（Windows 路径 C:\a b\x.mjs 不被吃掉）
+      if (q === '"' && ch === '\\' && (src[i + 1] === '"' || src[i + 1] === '\\')) { cur += src[++i]; continue }
+      if (ch === q) { q = null; continue }
+      cur += ch; continue
+    }
+    if ((ch === '"' || ch === "'") && !cur) { q = ch; started = true; continue }
+    if (/\s/.test(ch)) { if (cur || started) { out.push(cur); cur = ''; started = false } continue }
+    cur += ch
+  }
+  if (cur || started) out.push(cur)
   return out
 }
 
