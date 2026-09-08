@@ -6,7 +6,7 @@
  * 结构信号优先（err.code/errno——零文案依赖）；文案匹配仅作 shell 兼容路径的 fallback。
  * 边界（诚实）：shell 语法命令（|&<>）与 EINVAL（.cmd 类需 shell）回落 execSync——协议文本已禁这些形态。
  */
-import { execSync, execFileSync } from 'node:child_process'
+import { execSync, execFileSync, spawn } from 'node:child_process'
 
 /** 引号感知：引号内（如 node -e "a>=1&&b" 的 JS 代码）不算壳语法。 */
 function hasShellSyntax(c) {
@@ -70,9 +70,50 @@ export function classifyFailure(ex) {
   return { state: 'red', err: (errText.split('\n')[0] || '').slice(0, 120) }
 }
 
+/** 异步版执行器（v0.8.32，**卡死修复**）：与 execCmdSync 同语义（零壳直跑 + 三态分类），
+ *  但用 spawn 走事件环——判据/探针在工具调用里跑时不再把整个宿主进程停摆。
+ *  案底：可证伪门在 trySettleGroups 里用 execFileSync 同步跑 3 条负对照 + 1 次真跑，
+ *  重判据（dotnet test / BFS 脚本）一次落账就把宿主堵死几分钟——用户实测「卡死 + 注入延迟高」。 */
+export function execCmdAsync(cmd, opts = {}) {
+  const timeout = opts.timeout ?? 20000
+  const c = String(cmd || '').trim()
+  if (hasShellSyntax(c)) {
+    const err = new Error('协议禁壳：命令含壳运算符「| & < >」——用 write 工具落 .mjs 再 node 跑它，或分两次工具调用（判据与探针命令只走零壳直跑）')
+    err.clazz = 'broken'
+    return Promise.reject(err)
+  }
+  const toks = tokenize(c)
+  if (!toks.length) return Promise.resolve('')
+  let bin = toks[0]
+  if (bin === 'node' || bin === 'node.exe') bin = process.execPath
+  const useShell = /\.(?:cmd|bat)$/i.test(bin) || /^(?:npm|npx)$/i.test(bin)
+  return new Promise((resolve, reject) => {
+    let child
+    try {
+      child = spawn(useShell ? c : bin, useShell ? [] : toks.slice(1), {
+        shell: useShell, cwd: opts.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (e) { e.clazz = classifyFailure(e).state; reject(e); return }
+    let out = '', errOut = '', done = false
+    const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); fn(arg) }
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+      const e = new Error('ETIMEDOUT'); e.code = 'ETIMEDOUT'; e.stderr = errOut; e.clazz = 'broken'
+      finish(reject, e)
+    }, timeout)
+    child.stdout?.on('data', (d) => { out += d })
+    child.stderr?.on('data', (d) => { errOut += d })
+    child.on('error', (e) => { e.stderr = errOut; e.clazz = classifyFailure(e).state; finish(reject, e) })
+    child.on('close', (code) => {
+      if (code === 0) { finish(resolve, out); return }
+      const e = new Error(`Command failed: ${c}`); e.code = code; e.stderr = errOut; e.clazz = classifyFailure(e).state
+      finish(reject, e)
+    })
+  })
+}
+
 /** execSync 同形兼容（成功返 stdout，失败 throw——错误带 clazz 结构分类）。
- *  无 shell 语法的命令走 execFile 直跑（零 cmd.exe）；'node' 词头→process.execPath。 */
-export function execCmdSync(cmd, opts = {}) {
+ *  无 shell 语法的命令走 execFile 直跑（零 cmd.exe）；'node' 词头→process.execPath。 */export function execCmdSync(cmd, opts = {}) {
   const timeout = opts.timeout ?? 20000
   const c = String(cmd || '').trim()
   // v0.8.5 零壳协议（开发者定向「判据/探针命令别堆正则阻力」）：命令只走 execFile 直跑；

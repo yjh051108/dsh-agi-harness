@@ -32,10 +32,10 @@ import { loadPricing, savePricing, recordSession, shadowC, evaluateSwitch, obser
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync, execFileSync, spawn } from 'node:child_process'
-import { execCmdSync, classifyFailure } from './run-cmd.js'
+import { execCmdSync, execCmdAsync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
-import { runFalsifyGate, CONTROLS_FULL } from './falsify.js'
+import { runFalsifyGate, CONTROLS_FULL, falsifyKey } from './falsify.js'
 import { recordAbility, abilitySummary, readAbilities } from './ability-organ.js'
 import { bindActualAction, buildTaskState, recordBoundOutcome } from './task-value-core.js'
 import { getModelFingerprint } from './gate-core.js'
@@ -258,16 +258,26 @@ export async function extractSigns(exec) {
   try { const ms = await exec?.agent?.session?.deriveMessages?.(); return collectUserSigns(ms) } catch { return new Set() }
 }
 
-/** v0.8.30 判据执行器（三态）：负对照门与组落账共用同一分类器——同命令同分类。 */
-export function judgeRunner(cwd = process.cwd()) {
-  return (cmd) => {
-    try { execCmdSync(cmd, { timeout: judgeTimeoutMs(), cwd }); return 'green' }
+/** v0.8.30 判据执行器（三态）：负对照门与组落账共用同一分类器——同命令同分类。
+ *  v0.8.32 改异步（卡死修复）：用 execCmdAsync（spawn/事件环）而不是 execFileSync——
+ *  同步执行器在工具调用里跑会把整个宿主停摆（用户实测：重判据一次落账卡死几分钟）。
+ *  负对照（control=true）另有更短超时：判据在假货上跑 20s 还没完，本身就该判「跑不了」。 */
+export function judgeRunner(cwd = process.cwd(), opts = {}) {
+  const realMs = judgeTimeoutMs()
+  const controlMs = Math.min(realMs, Number(opts.controlMs) || 20000)
+  return async (cmd, meta = {}) => {
+    try { await execCmdAsync(cmd, { timeout: meta.control ? controlMs : realMs, cwd }); return 'green' }
     catch (e) {
       const k = classifyCmdError(e)
       return k.state === 'green' ? 'green' : k.state === 'red' ? 'red' : 'broken' // broken/pending（跑不了）= 未判定
     }
   }
 }
+
+/** v0.8.32 负对照结果记忆（会话级）：键=判据 + 产物指纹（路径/大小/mtime）。
+ *  为什么：同一判据在一次会话里会被反复落账（每步 closeGroup），不记忆就每次重跑 3 条负对照
+ *  ——重判据上这是数分钟的重复阻塞。产物一变（指纹变）自动失效重跑。 */
+const FALSIFY_MEMO = new Map()
 
 /**
  * v0.8.30 判据可证伪门（合同期早警 + 组落账门共用）：对每条 cmd 判据跑负对照。
@@ -286,12 +296,19 @@ export async function falsifyBlock(accept, args = {}) {
     let cmd
     try { cmd = parseAcceptCmd(String(x)) } catch { continue }
     let gate
-    try { gate = await runFalsifyGate({ cmd, writeSet, cwd, run, controls: CONTROLS_FULL }) }
-    catch (e) {
-      details.push({ cmd, verdict: 'unproven', reason: String(e?.message || e).slice(0, 120) })
-      continue
+    const key = falsifyKey(cmd, { writeSet, cwd })
+    const memo = FALSIFY_MEMO.get(key)
+    if (memo) gate = { ...memo, cached: true }
+    else {
+      try { gate = await runFalsifyGate({ cmd, writeSet, cwd, run, controls: CONTROLS_FULL }) }
+      catch (e) {
+        details.push({ cmd, verdict: 'unproven', reason: String(e?.message || e).slice(0, 120) })
+        continue
+      }
+      FALSIFY_MEMO.set(key, { verdict: gate.verdict, reason: gate.reason, controls: gate.controls, artifacts: gate.artifacts })
+      if (FALSIFY_MEMO.size > 200) FALSIFY_MEMO.delete(FALSIFY_MEMO.keys().next().value) // 上限：最旧的先淘汰
     }
-    details.push({ cmd, verdict: gate.verdict, reason: gate.reason, artifacts: gate.artifacts.length })
+    details.push({ cmd, verdict: gate.verdict, reason: gate.reason, artifacts: gate.artifacts.length, cached: gate.cached === true })
     if (gate.verdict === 'vacuous') {
       notes.push(`判据空转（负对照仍绿）：${cmd.slice(0, 100)}\n     ↳ ${gate.reason}；改法=换成真跑产物的行为型判据（读运行时读数/真实副作用），或改挂 人判:，或换一条独立通道的判据`)
     }
@@ -333,7 +350,7 @@ export async function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) 
       if (ax.startsWith('cmd:')) {
         let cmd
         try { cmd = parseAcceptCmd(ax) } catch (e) { cmdFails.push('形态坏：' + e.message); continue }
-        try { execCmdSync(cmd, { timeout: judgeTimeoutMs(), cwd }) }
+        try { await execCmdAsync(cmd, { timeout: judgeTimeoutMs(), cwd }) }
         catch (e) {
           const k = classifyCmdError(e)
           cmdFails.push(k.state === 'broken'

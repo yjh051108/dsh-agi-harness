@@ -293,6 +293,20 @@ export function cmdTokens(cmd) {
     .filter((t) => t.length >= 2)
 }
 
+/** 记忆化键（v0.8.32）：判据命令 + 可达/写入产物的（路径, 大小, mtime）指纹——产物一变即失效。 */
+export function falsifyKey(cmd, args = {}) {
+  const cwd = String(args.cwd ?? process.cwd())
+  const probe = typeof args.probe === 'function' ? args.probe : defaultProbe
+  const jp = judgePath(String(cmd ?? ''), cwd, probe)
+  const reach = jp ? reachableFiles(jp, { cwd, probe }) : []
+  const arts = selectArtifacts({ cmd, writeSet: args.writeSet, cwd, probe, extra: reach })
+  const fp = arts.map((p) => {
+    const i = probe(p)
+    return `${p.replace(/\\/g, '/')}:${i?.size ?? -1}:${Math.round(i?.mtimeMs ?? 0)}`
+  }).join(';')
+  return `${String(cmd ?? '')}|${fp}`
+}
+
 /**
  * 跑判据可证伪门：把产物替换成假货 → 真跑判据 → finally 还原 → 字节级校验。
  *
@@ -345,7 +359,7 @@ export async function runFalsifyGate(args = {}) {
         const lits = kind === 'anchored' ? anchoredLiterals(literals, Buffer.from(b.buf).toString('utf8')) : literals
         writeFile(b.p, stubFor(kind === 'anchored' ? 'literal' : kind, lits, b.buf.length, ext))
       }
-      state = await run(cmd)
+      state = await run(cmd, { control: true, kind })
     } catch {
       state = 'broken'
     } finally {
