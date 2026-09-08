@@ -1,5 +1,16 @@
 # 更新说明
 
+## v0.3.4 — 意图单一真相（堵住弹窗道误 approve）
+
+### 变更
+- **意图逻辑收成单一真相 `src/intent.js`**：JSON 信封、散文分句否定感知、弹窗决策同出一处。此前同一语义有两套实现——`index.js` 的文本扫描与 `tools.js` 冻结弹窗的子串匹配——v0.3.3 修了前者，**弹窗（主通道）仍把「暂不确认」判成 approve**（`/确认/.test(label)`）。`index.js` 只做兼容再导出。
+- **弹窗决策结构化（去子串匹配）**：`decideFreezeAnswer` 优先级 = ①显式结构化值（`answer.decision`）②选项标签**前缀逐字**（`确认·…` / `反驳·…`，含混双选=null）③补充文字走否定感知扫描。未知标签、空答案一律 **fail-closed 返回 null**——不再猜。
+- 选项清单由 `FREEZE_OPTIONS` 单一常量生成（`index.js` 弹窗与 `tools.js` 判定同源），弹窗回执带 `via=` 说明决策来自哪条通道。
+
+### 验证
+- 新增 `freeze-decision.test.mjs` 6 条（含「暂不确认→null」「确认修改→null」两条旧漏洞实证）。
+- 全量 382/382；`tools-v3` t11、`wiring` p8 等既有回归零失败；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.3 — 意图通道协议化（堵误确认漏洞）
 
 ### 新增

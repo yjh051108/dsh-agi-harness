@@ -24,6 +24,7 @@ import { weightsFace, distillDraft } from './propose-text.js'
 import { nearField } from './near-field.js'
 import { auditBrief, parseVerdict, recordAuditVerdict } from './audit-dispatch.js'
 import { dispatchCard } from './audit-rotation.js'
+import { decideFreezeAnswer } from './intent.js'
 import { loadSpec, commitSpec } from './v04-grader.js'
 import { zOf, parseOutput, vCompute } from './v04-core.js'
 import { computeC, rankTransition, demoteOnFake, rankLine, recoverRelaxed } from './rank-organ.js'
@@ -405,11 +406,12 @@ export function freezeDefinition(deps) {
         const a = (ans.answers || [])[0] || {}
         const selected = a.selected || []
         const custom = String(a.custom || '').trim()
-        const pickedGo = selected.some((x) => /确认/.test(x))
-        const pickedNo = selected.some((x) => /反驳|修改/.test(x))
-        // 按钮选择=显式意图；只写补充文字才降级正则判意图
-        const okGo = pickedGo && !pickedNo || (!selected.length && /确认|通过|同意|开执行阶段|开工/.test(custom) && !/修改|反驳|重排|不对/.test(custom))
-        const noGo = pickedNo && !pickedGo || (!selected.length && /修改|反驳|重排|不对|不同意/.test(custom))
+        // v0.8.13 弹窗决策结构化（案底：旧实现 /确认/.test(label) 子串匹配——「暂不确认」「确认修改」
+        // 都含「确认」→ 误 approve=直接锁合同；且补充文字走一套重复正则，修了文本道没修弹窗道）。
+        // 现走 intent.js 单一真相：显式结构化值 > 选项标签前缀逐字 > 补充文字否定感知；未识别一律 fail-closed。
+        const dec = decideFreezeAnswer(a)
+        const okGo = dec.intent === 'approve'
+        const noGo = dec.intent === 'reject'
         if (okGo) {
           st = { ...onWeightsConfirmed(st), reviewNote: custom || undefined, freezeAck: { at: Date.now(), via: 'ui-confirm' } }
           saveState(sid, st)
@@ -420,7 +422,7 @@ export function freezeDefinition(deps) {
           saveState(sid, st)
           return { ok: true, text: sheet + `\n↩️ UI 反驳（${(custom || selected.join(' ')).slice(0, 40) || '修改'}）→ 已解锁回标定态（已闭账不丢），按补充意见重排后重新 freeze` }
         }
-        return { ok: true, text: sheet + '\n⚠ 弹窗未获明确选择（含混/未选/双选）——保持待确认：可再 freeze 重弹，或文本回复『确认』/『修改』。' }
+        return { ok: true, text: sheet + `\n⚠ 弹窗未获明确选择（via=${dec.via}）——保持待确认：可再 freeze 重弹，或文本回复『确认』/『修改』。` }
       }
       return { ok: true, text: sheet + '\n（无 UI 通道：文本『确认』/『修改』或 settings.autoConfirm 回退路径生效）' }
     },
