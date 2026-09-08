@@ -46,7 +46,7 @@ window.__ModuleLoader__.load({
 		/** No hard inject: sessions is fetched optionally so the fiber activates even
 		* before the runtime provides it; polling retries until it appears. */
 		const inject = [];
-		const PANEL_ROUTE = "/browser-panel";
+		const PANEL_ROUTE = typeof window !== "undefined" && window.location && window.location.protocol === "https:" ? `https://${window.location.host}/browser-panel` : "/browser-panel";
 		const PANEL_STREAM_PATH = "/browser-panel/stream";
 		const POLL_MS = 500;
 		const css = `
