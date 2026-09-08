@@ -1,5 +1,18 @@
 # 更新说明
 
+## v0.3.16 — 变异审计纳保 rank-organ + pricing-organ（守护目标 8 → 10）
+
+### 变更
+- **`rank-organ.js` 与 `pricing-organ.js` 纳入变异审计**：65 个变异全部杀死（1.0）。7 条幸存变异逐条处置：
+  - `gBandOf` 区间端点（`>=` 与 `<=` 都不能松；`G_BANDS` 下界变异）——用 1/2/3/5/6/10/11/99 八点边界断言。
+  - `SEV_W.catastrophic` 4→5——用已知输入的 C 值钉死（0.7·Wilson(1/1)+0.2·(4/4)+0.1·1 = 44）。
+  - `slips` 计数的 `.length+1`——三条回炉（含一条 external）断言 slips=1。
+  - 空会话 `dV` 的 `vSeries.length+1`（会让 `1-undefined=NaN`）——断言 dV=0.001 且有限。
+  - `savePricing` 的 `return true→false` 经机械核验判**等价**（唯一调用点是裸语句，返回值无人使用）→ `equivalents.json`。
+
+### 验证
+- 新增 `rank-pricing-guard.test.mjs` 4 条；全量 **445/445**；变异审计 **65/65 杀死**、等价 9；棘轮**十模块**均 1.0；账本快检 `目标 10 文件 · 变异 65 · 杀死 65 · 幸存 0` 退出 0；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.15 — 回炉归因结构化（cause）
 
 ### 变更

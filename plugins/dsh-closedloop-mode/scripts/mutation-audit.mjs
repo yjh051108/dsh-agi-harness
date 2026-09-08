@@ -36,6 +36,8 @@ const TARGETS = [
   { file: 'src/tools.js', tests: ['tests/infra-cwd.test.mjs', 'tests/delivery-attest.test.mjs', 'tests/probe-tokens.test.mjs', 'tests/user-signs.test.mjs', 'tests/judge-criteria.test.mjs', 'tests/tools-mutation-guard.test.mjs'] },
   { file: 'src/gate-core.js', tests: ['tests/gate-core.test.mjs', 'tests/model-fingerprint.test.mjs', 'tests/gate-core-model.test.mjs', 'tests/gate-core-guard.test.mjs'] },
   { file: 'src/run-cmd.js', tests: ['tests/run-cmd.test.mjs', 'tests/run-cmd-tokenize.test.mjs'] },
+  { file: 'src/rank-organ.js', tests: ['tests/rank.test.mjs', 'tests/rank-guide.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
+  { file: 'src/pricing-organ.js', tests: ['tests/pricing.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
 ]
 
 const run = (args, cwd) => {

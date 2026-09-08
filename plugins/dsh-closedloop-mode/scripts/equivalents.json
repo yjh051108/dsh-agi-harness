@@ -65,6 +65,14 @@
       "to": "<",
       "line": "wilsonLB: if (!n || n <= 0) return 0",
       "reason": "机械核验：`!n` 已短路 n=0（0 是 falsy），故 `n <= 0` 与 `n < 0` 在 n=0 与 n>0 时判定相同，仅 n<0 时两者都为真——三种输入下结果一致"
+    },
+    {
+      "file": "src/pricing-organ.js",
+      "kind": "return-const",
+      "from": "return true",
+      "to": "return false",
+      "line": "savePricing() 末尾 return true",
+      "reason": "机械核验（grep 全仓 savePricing 调用）：唯一调用点 tools.js L1110 是裸语句 `savePricing(dir, pr)`，返回值无人使用——死返回值"
     }
   ]
 }
