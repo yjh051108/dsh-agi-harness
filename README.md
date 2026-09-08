@@ -43,7 +43,7 @@
 cd plugins/dsh-closedloop-mode && node --test tests/
 ```
 
-## 许可
+## 更新说明\n\n见 [CHANGELOG.md](CHANGELOG.md)。\n\n## 许可
 
 Apache-2.0（见 LICENSE，全文 verbatim）。
 
@@ -58,6 +58,7 @@ Apache-2.0（见 LICENSE，全文 verbatim）。
 
 注：`dsh-engram-relay` 与 `dsh-browser-panel` 的 `license` 字段原为脚手架模板默认的
 BSD-3-Clause（非第三方约束），已统一为 Apache-2.0。
+
 
 
 
