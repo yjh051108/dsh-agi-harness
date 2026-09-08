@@ -44,6 +44,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
-    "audit:mutation": "node scripts/mutation-audit.mjs"
+    "audit:mutation": "node scripts/mutation-audit.mjs",
+    "audit:ledger": "node scripts/check-mutation-ledger.mjs",
+    "audit:weak": "node scripts/weak-assert-scan.mjs"
   }
 }
