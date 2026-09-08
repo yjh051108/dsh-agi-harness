@@ -13,6 +13,7 @@
  *    现改硬依赖 + 同步 installSection（宿主服务该命名空间，卡片才派发），reload 秒回。
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -20,16 +21,28 @@ export const NO_PRESET = '(无预设)'
 export const SCOPE_NS = 'closedloop'
 const dshHome = () => process.env.DSH_HOME || join(homedir(), '.dsh')
 
-/** 预设发现：扫 .agent-presets 子目录，「无预设」恒列首位。 */
+/** 预设发现（多根合并）：用户 DSH_HOME/.agent-presets + DSH 内置包 presets/。
+ *  内置包非本插件依赖，解析失败时按常见全局安装路径兜底（全部 existsSync 守卫，缺了不报错）。 */
+function presetRoots() {
+  const roots = [join(dshHome(), '.agent-presets')]
+  const pkgs = []
+  try { pkgs.push(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-agent-presets/package.json'))) } catch { /* 非依赖，走兜底 */ }
+  pkgs.push(join(homedir(), 'AppData', 'Roaming', 'npm', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-agent-presets'))
+  for (const p of pkgs) {
+    try { const dir = join(p, 'presets'); if (existsSync(dir) && !roots.includes(dir)) roots.push(dir) } catch { /* 跳过 */ }
+  }
+  return roots
+}
+
+/** 清单：(无预设) 恒列首位，其余跨根去重后按名排序。 */
 export function listPresets() {
-  let names = []
-  try {
-    names = readdirSync(join(dshHome(), '.agent-presets'), { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort()
-  } catch { /* 目录不存在=只有无预设项 */ }
-  return [NO_PRESET, ...names]
+  const names = new Set()
+  for (const root of presetRoots()) {
+    try {
+      for (const d of readdirSync(root, { withFileTypes: true })) if (d.isDirectory()) names.add(d.name)
+    } catch { /* 根不存在=跳过 */ }
+  }
+  return [NO_PRESET, ...[...names].sort()]
 }
 
 /** 值校验：只认 { disabled: string[] }，非法拒写不污染已存值。 */
