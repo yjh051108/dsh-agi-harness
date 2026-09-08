@@ -32,6 +32,7 @@ import { loadPricing, savePricing, recordSession, shadowC, evaluateSwitch, obser
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync, execFileSync, spawn } from 'node:child_process'
+import { homedir } from 'node:os'
 import { execCmdSync, execCmdAsync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
@@ -120,17 +121,34 @@ export function normAcceptItem(x) {
 /** v0.8.6 会话工作区 cwd（判据/探针/测量命令的基准）：exec.agent.session.cwd 优先，宿主 cwd 兜底。
  *  v0.8.14 回退链（实测案底 probe-cwd-001：本部署 exec.agent.session.cwd 为空 → 判据/探针全部落在
  *  宿主 cwd C:\Users\Administrator，相对路径判据必红——v0.8.6 承诺「相对路径按会话工作区解析」未兑现）：
- *  env DSH_SESSION_CWD/DSH_AGENT_CWD → 从 DSH_SESSION_JSONL 目录名解码（--D-dsh-- → D:/dsh）→ 宿主 cwd。 */
-export const sessionCwd = (exec) => {
+ *  v0.8.33（issue #15）：① 新增 env DSH_CLOSEDLOOP_CWD 显式覆盖（最高优先）；
+ *  env DSH_SESSION_CWD/DSH_AGENT_CWD → 从 DSH_SESSION_JSONL 目录名解码（--D-dsh-- → D:/dsh）
+ *  → workspaceFromSessionId（DSH_HOME 缺失时按 dshHome() 反推）→ 宿主 cwd。 */
+export const sessionCwd = (exec, env = process.env) => {
   const c = String(exec?.agent?.session?.cwd || '').trim()
   if (c) return c
+  // v0.8.33 显式覆盖（issue #15 建议 4）：工作区根 ≠ 工程根时，调用方可以直接指定基准目录
+  const override = String(env?.DSH_CLOSEDLOOP_CWD || '').trim()
+  if (override && existsSync(override)) return override
   // v0.8.21 实测案底（非 ASCII 工作区 /4.1flash大战fable5.1/月球撞击地球）：段解码未还原 ~XXXX 转义
   // → cwd 指向不存在路径 → 所有 execFile 直接 ENOENT（判据 dry-run/探针全线「跑不了」，非「判据红」）。
   // 双保险：解码已补转义还原（见 decodeWorkspaceSegment），此处再加存在性闸，坏候选逐级弃用。
-  for (const cand of [decodeSessionCwd(), workspaceFromSessionId(exec?.agent?.session?.id)]) {
+  for (const cand of [decodeSessionCwd(env), workspaceFromSessionId(exec?.agent?.session?.id, env)]) {
     if (cand && existsSync(cand)) return cand
   }
   return process.cwd()
+}
+
+/** DSH_HOME 解析（v0.8.33 issue #15）：宿主进程里 DSH_HOME 常常不存在（DSH_SESSION_* 只注入
+ *  命令子进程）→ ① env.DSH_HOME ② 从 DSH_SESSION_JSONL 的 …/sessions/<seg>/ 反推父目录
+ *  ③ ~/.dsh 兜底。返回空串=无法确定。 */
+export function dshHome(env = process.env) {
+  const explicit = String(env?.DSH_HOME || '').trim()
+  if (explicit) return explicit
+  const p = String(env?.DSH_SESSION_JSONL || '').trim()
+  const m = p.match(/[\\/]sessions[\\/]/)
+  if (m && m.index > 0) return p.slice(0, m.index)
+  try { return join(homedir(), '.dsh') } catch { return '' }
 }
 
 /** 工作区目录段解码（纯函数可测）：'--D-dsh--' → 'D:/dsh'；非编码段=空串。 */
@@ -159,7 +177,7 @@ export function decodeSessionCwd(env = process.env) {
  *  找不到=空串（调用方兜底）。 */
 export function workspaceFromSessionId(sid, env = process.env) {
   const id = String(sid || '').trim()
-  const home = String(env?.DSH_HOME || '').trim()
+  const home = dshHome(env)
   if (!id || !home) return ''
   const base = join(home, 'sessions')
   try {
@@ -357,7 +375,7 @@ export async function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) 
             ? '跑不了（命令坏，非结论红——修形态：注释入人判项/绝对路径后重跑）: ' + k.err
             : k.state === 'pending'
               ? '跑不了（物料未就位：判据目标本应在本步创建——未创建=不落账）: ' + k.err
-              : '判据红（exit≠0，条件未满足）: ' + k.err)
+              : '判据红（exit≠0，条件未满足）: ' + k.err + '（cwd=' + cwd + '）')
         }
       } else if (ax.startsWith('人判:')) honorNotes.push(ax.slice(3).trim())
     }
