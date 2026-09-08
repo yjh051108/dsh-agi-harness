@@ -23,9 +23,10 @@ for (const f of files) {
   const lines = readFileLines(f)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    // 裸调用：ctx.httpServer.register(...) 且不是 registerRoute helper 内部那行
-    if (line.includes('ctx.httpServer.register(') && !line.trim().startsWith('//')) {
-      // 排除 helper 定义行（ctx.effect(() => ctx.httpServer.register(route)）
+    // 裸调用：ctx.httpServer / ctx.webServer 的 register(...) 且不是 registerRoute helper 内部那行
+    // （2026-09 适配：DSH host 服务更名 httpServer → webServer，守卫双认）
+    if ((line.includes('ctx.httpServer.register(') || line.includes('ctx.webServer.register(')) && !line.trim().startsWith('//')) {
+      // 排除 helper 定义行（ctx.effect(() => ctx.webServer.register(route)）
       if (line.includes('ctx.effect')) continue
       console.error(`[check:routes] 裸注册违规 ${relative(root, f)}:${i + 1}: ${line.trim()}`)
       console.error(`              路由注册必须经 registerRoute（ctx.effect 登记），否则热重载残留 duplicate route`)

@@ -1,8 +1,4 @@
-//#region lib/types/invariant.js
-/**
-* Package-owned invariant companion for `@dsh-external/dsh-browser-panel`.
-* @module @dsh-external/dsh-browser-panel/invariant
-*/
+//#region src/invariant.ts
 const PACKAGE_NAME = "@dsh-external/dsh-browser-panel";
 /** Cordis companion plugin name. */
 const name = "browser-panel-invariant";
