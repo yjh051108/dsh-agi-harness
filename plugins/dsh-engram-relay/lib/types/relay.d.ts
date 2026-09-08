@@ -91,6 +91,12 @@ export declare class EngramRelay {
     private vectorPrefilter;
     /** 挂载所有 seam。 */
     install(): () => void;
+    /** 注入被跳过：首次显式留痕——issue #14 最贵的部分是「静默」，不是崩溃。 */
+    private injectionSkipLogged;
+    private noteInjectionSkip;
+    /** 注入失败：首次升 error 并计数，之后按次数 warn——不再把异常降级成静默。 */
+    private injectionFailCount;
+    private noteInjectionFailure;
     private renderMemorySection;
     /** 异步触发训练模型的原生回忆（由 llm/stream 旁路调用，缓存结果）。 */
     maybeRecall(query: string): Promise<void>;
