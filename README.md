@@ -23,7 +23,7 @@
 
 ## 内置数据（开箱即用，无初始化）
 
-- 灵枢知识库：`plugins/dsh-engram-relay/lingshu/`（融合图谱 + 知识书卡，随包）
+- 灵枢（数据不随包）：引擎为 MIT 开源（CommonTrustProtocol/FuRongJun-1999，见 lingshu/LICENSE-aeis.txt），运行数据由部署环境自行积累，插件对空库零报错
 - 语义向量模型：`plugins/dsh-engram-relay/model/`（BAAI bge-small-zh 量化版，Apache-2.0）
 - 说明：跨会话记忆库（engrams.jsonl）随用户私有使用、不随包分发——首次运行命令库为空属正常，插件零报错。
 
@@ -52,11 +52,13 @@ Apache-2.0（见 LICENSE，全文 verbatim）。
 | 组件 | 来源 | 许可 |
 |---|---|---|
 | `plugins/dsh-engram-relay/model/bge-small-zh/` | BAAI bge-small-zh-v1.5（量化版） | Apache-2.0 |
-| `plugins/dsh-engram-relay/lingshu/`（数据由灵枢 AEIS 生成） | 灵枢 AEIS 引擎（[CommonTrustProtocol](https://github.com/FuRongJun-1999/CommonTrustProtocol)，FuRongJun-1999） | MIT（引擎；见 lingshu/LICENSE-aeis.txt） |
+| `plugins/dsh-engram-relay` 借鉴灵枢 AEIS 引擎思路 | [CommonTrustProtocol](https://github.com/FuRongJun-1999/CommonTrustProtocol)（FuRongJun-1999，MIT；见 lingshu/LICENSE-aeis.txt）——运行数据不随包分发 | MIT |
+| `plugins/dsh-browser-panel` | 本项目自有 | Apache-2.0 |
 | `plugins/dsh-engram-relay/lingshu/` | 灵枢知识库（本项目生成数据） | Apache-2.0 |
 
 注：`dsh-engram-relay` 与 `dsh-browser-panel` 的 `license` 字段原为脚手架模板默认的
 BSD-3-Clause（非第三方约束），已统一为 Apache-2.0。
+
 
 
 
