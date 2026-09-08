@@ -36,6 +36,19 @@ window.__ModuleLoader__.load({
 .graded-pop-progress{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .graded-pop-progress b{font-size:16px;color:var(--dsw-alias-label-primary,#222)}
 .v-stair-wrap{border-top:1px solid var(--dsw-alias-border-l2,#eee);padding-top:6px}
+/* 设置页卡：外观对齐官方 PluginCard（li + header button + 展开体；官方类为 CSS module 哈希不可复用） */
+.cl-card{list-style:none;margin:0 0 14px;padding:0;border:1px solid var(--dsw-alias-border-l2,#e6e6e6);border-radius:12px;background:var(--dsw-bg,#fff);overflow:hidden}
+.cl-card-head{display:flex;width:100%;align-items:center;gap:12px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.cl-card-head:hover{background:var(--dsw-alias-bg-hover,#f7f7f7)}
+.cl-card-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.cl-card-name{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary,#222)}
+.cl-card-desc{font-size:14px;color:var(--dsw-alias-label-tertiary,#8a8a8a)}
+.cl-card-chev{font-size:12px;color:var(--dsw-alias-label-tertiary,#999);transition:transform .15s}
+.cl-card-open .cl-card-chev{transform:rotate(90deg)}
+.cl-card-body{padding:2px 18px 14px;border-top:1px solid var(--dsw-alias-border-l2,#eee)}
+.cl-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;font-size:14px;border-bottom:1px solid var(--dsw-alias-border-l2,#f2f2f2)}
+.cl-row:last-child{border-bottom:0}
+.cl-row-hint{margin-top:8px;font-size:12px;color:var(--dsw-alias-label-tertiary,#999)}
 `
     const tagId = "@dsh-external/dsh-closedloop-mode/graded-tree.css"
     if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -177,6 +190,7 @@ window.__ModuleLoader__.load({
     const SCOPE_API = "/graded-mode/api/scope"
     function ScopeCard() {
       const [rows, setRows] = useState(null) // { presets: [], disabled: [] }
+      const [open, setOpen] = useState(false)
       const [err, setErr] = useState(null)
       useEffect(() => {
         let live = true
@@ -192,15 +206,23 @@ window.__ModuleLoader__.load({
         })
         setErr(null)
       }
-      if (!rows) return e("div", { className: "graded-hint" }, "读取预设清单中…")
-      return e("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 13 } },
-        e("div", { style: { fontWeight: 600, marginBottom: 2 } }, "闭环 · 预设作用域"),
-        rows.presets.map((name) => e("label", { key: name, style: { display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" } },
+      const body = !rows ? e("div", { className: "cl-row-hint" }, "读取预设清单中…") : e("div", null,
+        rows.presets.map((name) => e("label", { key: name, className: "cl-row" },
           e("span", null, name),
           e("input", { type: "checkbox", checked: !rows.disabled.includes(name), onChange: (ev) => toggle(name, ev.target.checked) }))),
-        rows.presets.length === 0 && e("div", { className: "graded-hint" }, "未发现预设目录"),
-        err && e("div", { className: "graded-hint", style: { color: "#c0392b" }, title: err }, "写入失败：见悬停"),
-        e("div", { className: "graded-hint" }, "开=该预设启用闭环；关=零注入零接管（/optimal 命令仍可手动开）"))
+        rows.presets.length === 0 && e("div", { className: "cl-row-hint" }, "未发现预设目录"),
+        err && e("div", { className: "cl-row-hint", style: { color: "#c0392b" }, title: err }, "写入失败：见悬停"),
+        e("div", { className: "cl-row-hint" }, "开=该预设启用闭环；关=零注入零接管（/optimal 命令仍可手动开）"))
+      return e("li", { className: "cl-card" + (open ? " cl-card-open" : "") },
+        e("button", {
+          type: "button", className: "cl-card-head", "aria-expanded": open,
+          "aria-label": (open ? "收起" : "展开") + ": 闭环 · 预设作用域", onClick: () => setOpen(!open),
+        },
+          e("span", { className: "cl-card-text" },
+            e("span", { className: "cl-card-name" }, "闭环 · 预设作用域"),
+            e("span", { className: "cl-card-desc" }, "选择在哪些预设下启用闭环插件（默认全部启用）")),
+          e("span", { className: "cl-card-chev" }, "❯")),
+        open && e("div", { className: "cl-card-body" }, body))
     }
 
     const inject = ["slots", "settingsScope"]
