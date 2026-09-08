@@ -45,6 +45,7 @@ import {
 } from './mode-state.js'
 import { loadStack, stackTop, vLadderOf, optimalDir } from './optimal-engine.js'
 import { gateWrite, WRITE_TOOLS } from './write-gate.js'
+import { detectDetachedDelivery, deliveryWarningText } from './delivery-guard.js'
 import { noteFriction } from './friction-organ.js'
 import { onWriteGateDeny, onWriteGateAllow } from './gate-wiring.js'
 import { gateAmbientLine, PHASE_FOCUS } from './gate-ambient.js'
@@ -476,10 +477,24 @@ export function apply(ctx, config) {
     const sid = agent?.session?.id
     let offJustNow = false
     let startupNeeded = false
+    let deliveryWarn = '' // v0.8.34 交付门（外层作用域：pre-step 前判定、next() 后注入）
     const startupGuidance = '【超级任务完成模式·第一拍】任何任务先做这一件事：调用工具 super_task_completion_mode 立合同——说明目的、什么算完成、拿什么验证（断言逐条带来源；缺信息/权限/判断先向开发者索要，不要猜）。然后 decompose 分组（判据写可跑命令 cmd: 或人判:）+ freeze 开执行。之后每步：先 optimal_declare 声明这一步的预测数字与验证方式，再实现，最后 optimal_converge 真实对账。侦察（read/probe/搜索）全程随时可用。'
     if (sid !== undefined) {
       activeSid = sid
       let s = state(sid)
+      // v0.8.34 交付门（b90dee61 案底：8 组只落账 3 组就写「交付完成」）：
+      //   在 pre-step 用上一轮助手文本判定「有交付声明 + 合同有未落账组」→ 记教训 + 本拍注入阻断提示。
+      if ((s.stage === 'rolling' || s.stage === 'final') && (s.groups || []).some((g) => g && !g.settled)) {
+        const lastAssistant = [...(messages || [])].reverse().find((m) => m && m.role === 'assistant')
+        let lastText = ''
+        if (typeof lastAssistant?.content === 'string') lastText = lastAssistant.content
+        else for (const x of (lastAssistant?.content || [])) if (x && typeof x === 'object' && x.type === 'text') lastText += x.text || ''
+        const det = detectDetachedDelivery(s, { text: lastText, stage: s.stage })
+        if (det.detached) {
+          deliveryWarn = deliveryWarningText(det.groups)
+          try { recordLesson('detached-delivery', `合同剩 ${det.groups.length} 组未落账却写交付声明：${det.groups.slice(0, 3).join('、')}`, 'index:pre-step', undefined, sid) } catch { /* 记账失败不阻断 */ }
+        }
+      }
       // 真人帧登记：写闸据此区分「主会话绕环裸写」与「子代理委派干活」
       if ((messages || []).some((m) => m && m.role === 'user' && m.source && m.source.kind === 'user' && m.source.rpcId)) humanTurnSids.add(sid)
       // 首轮防漏接管：若 session/event 未及时送达，pre-step 仍在模型生成前补开环。
@@ -570,6 +585,15 @@ export function apply(ctx, config) {
         s.injected.add('persona-entry')
         spliceInjection(decision, userMsg(PERSONA))
         console.log(`[closedloop] persona-entry sid=${String(sid2).slice(-8)}（绝对入口首注）`)
+      }
+      // v0.8.34 交付门：本拍检测到「未闭环却宣称交付」→ 注入阻断提示（同组数只注一次，防刷屏）
+      if (deliveryWarn) {
+        const wkey = 'delivery-warn:' + ((s.groups || []).filter((g) => g && !g.settled).length)
+        if (!s.injected.has(wkey)) {
+          s.injected.add(wkey)
+          spliceInjection(decision, userMsg(deliveryWarn))
+          console.log(`[closedloop] delivery-warn sid=${String(sid2).slice(-8)}（合同未闭环就交付）`)
+        }
       }
       if (startupNeeded || (s.stage === 'brainstorm' && !s.injected.has('startup-guidance'))) {
         s.injected.add('startup-guidance')
