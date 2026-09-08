@@ -1,0 +1,96 @@
+/**
+ * mutation-audit.mjs — 沙箱变异审计（集成版：插件内可重复跑）
+ *
+ * 观察者 = 突变算子（无需人当神谕）；存活突变 = 装饰性断言 = 缺陷条目（自带可复现探针）。
+ * 硬门：突变后语法无效 → 不入账（v1 会把语法错当"杀死"，虚高分数）。
+ *
+ * 用法：node scripts/mutation-audit.mjs [插件目录] [每类突变上限]
+ * 产物：mutation-ledger.json（账本，默认落 DSH_HOME 或 --out 指定）
+ */
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { OPS_VERSION, deriveMutations, applyMutation, revertMutation } from './lib/mutation-ops.mjs'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PLUGIN = resolve(process.argv[2] || join(HERE, '..'))
+const PER_KIND = Number(process.argv[3] || 1)
+const OUT = process.env.MUTATION_LEDGER || join(process.cwd(), 'mutation-ledger.json')
+const SANDBOX = join(process.env.TEMP || '/tmp', 'cl-mut-sandbox')
+
+/** 等价突变抑制清单（人复核，带理由）——不计入分母 */
+const EQUIV_FILE = join(HERE, 'equivalents.json')
+const equivalents = existsSync(EQUIV_FILE) ? (JSON.parse(readFileSync(EQUIV_FILE, 'utf8')).entries || []) : []
+
+/** 文件 → 守护它的测试集（案底：一对一映射会漏掉 chain.test，产出假阳性） */
+const TARGETS = [
+  { file: 'src/write-gate.js', tests: ['tests/write-gate.test.mjs'] },
+  { file: 'src/scope.js', tests: ['tests/scope.test.mjs'] },
+  { file: 'src/optimal-engine.js', tests: ['tests/optimal.test.mjs', 'tests/chain.test.mjs', 'tests/maingate.test.mjs', 'tests/demands.test.mjs', 'tests/prepgap.test.mjs'] },
+]
+
+const run = (args, cwd) => {
+  try { execFileSync(process.execPath, args, { cwd, stdio: 'ignore', timeout: 180000 }); return 0 } catch { return 1 }
+}
+
+rmSync(SANDBOX, { recursive: true, force: true })
+mkdirSync(SANDBOX, { recursive: true })
+for (const item of ['src', 'tests', 'package.json', 'scripts']) {
+  const p = join(PLUGIN, item)
+  if (existsSync(p)) cpSync(p, join(SANDBOX, item), { recursive: true })
+}
+
+// 基线先绿门（案底：pristine 里存在失败测试时，任何突变都会因"套件本来就红"而假性被杀，
+// 分数虚高——实测 0.941 的假象 vs 真实的 0.824）。不绿=拒绝出账本。
+const baselineFailures = []
+for (const t of TARGETS) {
+  if (t.tests.some((rel) => !existsSync(join(SANDBOX, rel)))) continue
+  for (const rel of t.tests) if (run(['--test', rel], SANDBOX) !== 0) baselineFailures.push(rel)
+}
+if (baselineFailures.length) {
+  console.error('⛔ 基线不绿，拒绝出账本（否则所有突变都会假性被杀）：' + baselineFailures.join(', '))
+  process.exit(1)
+}
+
+const ledger = []
+for (const t of TARGETS) {
+  const srcPath = join(SANDBOX, t.file)
+  if (!existsSync(srcPath) || !t.tests.every((r) => existsSync(join(SANDBOX, r)))) { ledger.push({ file: t.file, skipped: '缺文件' }); continue }
+  const pristine = readFileSync(srcPath, 'utf8')
+  for (const m of deriveMutations(pristine, { perKind: PER_KIND })) {
+    const mutated = applyMutation(pristine, m)
+    if (revertMutation(mutated, m) !== pristine) { ledger.push({ file: t.file, kind: m.kind, line: m.line, skipped: '不可逆' }); continue }
+    writeFileSync(srcPath, mutated)
+    const syntaxOk = run(['--check', srcPath], SANDBOX) === 0
+    let killed = false, note = '语法无效（不入账）', failed = []
+    if (syntaxOk) {
+      for (const rel of t.tests) if (run(['--test', rel], SANDBOX) !== 0) failed.push(rel)
+      killed = failed.length > 0
+      note = killed ? `tests FAIL（被杀于 ${failed.join(',')}）` : '全部测试 PASS（突变存活）'
+    }
+    writeFileSync(srcPath, pristine)
+    const eq = equivalents.find((e) => e.file === t.file && e.kind === m.kind && e.from === m.from && e.to === m.to)
+    ledger.push({ file: t.file, tests: t.tests, kind: m.kind, from: m.from, to: m.to, line: m.line, syntaxOk, killed, note, ...(eq ? { equivalent: true, equivReason: eq.reason } : {}) })
+  }
+}
+
+const counted = ledger.filter((x) => !x.skipped && x.syntaxOk && !x.equivalent)
+const killed = counted.filter((x) => x.killed).length
+const survived = counted.filter((x) => !x.killed)
+const equivalent = ledger.filter((x) => x.equivalent)
+const summary = {
+  opsVersion: OPS_VERSION,
+  plugin: PLUGIN,
+  mutations: counted.length,
+  syntaxInvalid: ledger.filter((x) => x.syntaxOk === false).length,
+  equivalentExcluded: equivalent.length,
+  killed,
+  survived: survived.length,
+  killRate: counted.length ? +(killed / counted.length).toFixed(3) : null,
+  equivalents: equivalent.map((x) => ({ file: x.file, kind: x.kind, mutant: `${x.from} → ${x.to}`, reason: x.equivReason })),
+  defects: survived.map((x) => ({ file: x.file, kind: x.kind, mutant: `${x.from} → ${x.to}`, at: x.line, probe: `在 ${x.file} 把 ${x.from} 改成 ${x.to} 后跑 ${x.tests.join(',')} 仍全绿` })),
+}
+mkdirSync(dirname(resolve(OUT)), { recursive: true })
+writeFileSync(OUT, JSON.stringify({ summary, ledger }, null, 1))
+console.log(JSON.stringify(summary, null, 1))

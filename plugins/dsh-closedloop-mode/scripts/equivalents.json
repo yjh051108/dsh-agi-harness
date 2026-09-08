@@ -1,0 +1,54 @@
+{
+  "_doc": "等价突变抑制清单：这些突变在语义上与原实现等价（或在本环境不可探测），不计入杀死率分母。每条必须带理由，且由人复核——不假装机器能判定语义等价。",
+  "opsVersion": "v2",
+  "entries": [
+    {
+      "file": "src/optimal-engine.js",
+      "kind": "filter-map",
+      "from": ".filter(",
+      "to": ".map(",
+      "line": "readChain: split('\\n').filter(l => l.trim()).map(...).filter(Boolean)",
+      "reason": "下游已有 .filter(Boolean)：空行经 map→JSON.parse('')抛错→null→被 Boolean 过滤，两条路径结果完全相同"
+    },
+    {
+      "file": "src/scope.js",
+      "kind": "num-plus1",
+      "from": "1",
+      "to": "2",
+      "line": "let fileCache = { size: -1, val: null }",
+      "reason": "哨兵仅用于首次失效：任何合法 scope JSON 长度都 >2 字节；非法内容两路皆返回 null——该突变在本环境不可探测"
+    },
+    {
+      "file": "src/scope.js",
+      "kind": "return-const",
+      "from": "return null",
+      "to": "return undefined",
+      "line": "if (!existsSync(scopeFile())) return null",
+      "reason": "调用方只做真值判断（liveScopeFromFile() || ...），null 与 undefined 同 falsy，行为完全一致"
+    },
+    {
+      "file": "src/scope.js",
+      "kind": "length-plus1",
+      "from": ".length",
+      "to": ".length + 1",
+      "line": "if (fileCache.size !== buf.length)",
+      "reason": "该判断只控制缓存是否重解析：恒不相等=每次都重解析，结果值完全相同（只损失性能，不改语义）"
+    },
+    {
+      "file": "src/optimal-engine.js",
+      "kind": "num-plus1",
+      "from": "3",
+      "to": "4",
+      "line": "export const BANDS = { far: 3, near: 2, at: 1 }",
+      "reason": "机械核验（grep 全仓 BANDS 用法）：far 只参与两种比较——与 BANDS.at 的等值比较、以及 BANDS[x] < BANDS[y] 的序比较；3 与 4 在这两类比较中判定完全相同"
+    },
+    {
+      "file": "src/optimal-engine.js",
+      "kind": "return-const",
+      "from": "return true",
+      "to": "return false",
+      "line": "saveStack() 末尾 return true",
+      "reason": "机械核验（grep 全仓 saveStack 调用）：5 处调用全部是裸语句，返回值无人使用——死返回值"
+    }
+  ]
+}

@@ -7,9 +7,44 @@ import { join } from 'node:path'
 const TMP = mkdtempSync(join(tmpdir(), 'oengine-'))
 process.env.DSH_HOME = TMP
 
-const { declareStep, convergeStep, rollbackStep, loadStack, saveStack, stackText, stackTop, findClosedFor, valueChainText } = await import('../src/optimal-engine.js')
+const { declareStep, convergeStep, rollbackStep, loadStack, saveStack, stackText, stackTop, findClosedFor, valueChainText, settleDirtyTail, BANDS, digestOf } = await import('../src/optimal-engine.js')
 const { initMode, trigger, onCostCommit, onGroupsEdit, onWeightsFreeze, onWeightsConfirmed, saveState, loadState } = await import('../src/mode-state.js')
 const { optimalDeclareDefinition, optimalConvergeDefinition, optimalRollbackDefinition, optimalStackDefinition } = await import('../src/tools.js')
+
+test('dt1 settleDirtyTail：open 步移入 rolledBack，rest 不再含 open（变异审计案底：该过滤器零覆盖）', () => {
+  const sid = 'dirty-tail-1'
+  saveStack(sid, {
+    version: 2,
+    steps: [{ n: 1, title: 'done', status: 'closed' }, { n: 2, title: 'pending', status: 'open' }],
+    rolledBack: [],
+  })
+  const n = settleDirtyTail(sid)
+  assert.equal(n, 1, '返回被自动结算的 open 步数')
+  const after = loadStack(sid)
+  assert.equal(after.steps.length, 1, 'open 步必须被移出 steps')
+  assert.equal(after.steps[0].title, 'done', 'closed 步保留')
+  assert.equal(after.rolledBack.length, 1, 'open 步进 rolledBack')
+  assert.match(String(after.rolledBack[0].reason), /dirty tail/i, '回滚原因可追溯')
+  assert.equal(settleDirtyTail(sid), 0, '无 open 步=幂等零')
+})
+
+test('bd1 BANDS 序带单调且正整数（变异审计案底：far 3→4 曾无人守护）', () => {
+  assert.ok(Number.isInteger(BANDS.far) && Number.isInteger(BANDS.near) && Number.isInteger(BANDS.at), '三档均为整数')
+  assert.ok(BANDS.far > BANDS.near && BANDS.near > BANDS.at, `序带必须严格递减（数字越小越接近目标），实际=${JSON.stringify(BANDS)}`)
+  assert.ok(BANDS.at > 0, '最小档仍为正')
+})
+
+test('dg1 digestOf 键序无关、内容敏感（变异审计案底：canon 条件取反曾存活）', () => {
+  // 契约：digestOf 只摘要 {steps, rolledBack} 两个字段（读函数定义得知——首版测试按裸对象写，误判）
+  const s1 = { steps: [{ n: 1, title: 'a', status: 'closed' }], rolledBack: [] }
+  assert.equal(digestOf(s1), digestOf({ ...s1 }), '同内容=同 digest')
+  assert.notEqual(digestOf(s1), digestOf({ steps: [{ n: 1, title: 'b', status: 'closed' }], rolledBack: [] }), '内容不同=digest 必须变')
+  assert.notEqual(digestOf(s1), digestOf({ steps: [], rolledBack: [] }), '步数不同=digest 必须变')
+  // 键序无关：同一内容、键序不同的两对象（canon 排序保证）
+  const o1 = { steps: [{ title: 'a', status: 'closed', n: 1 }], rolledBack: [] }
+  const o2 = { rolledBack: [], steps: [{ n: 1, status: 'closed', title: 'a' }] }
+  assert.equal(digestOf(o1), digestOf(o2), '键序不同=同 digest（稳定序列化）')
+})
 
 const base = (title, source = 'prior:AGMA a=m(Z1+Z2)/2') => ({ // v0.4.2 来源纪律：公式先验=显式 prior:（默认参数面，调用点零修改）
   title,

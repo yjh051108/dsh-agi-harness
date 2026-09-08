@@ -50,3 +50,10 @@ test('s5 文件活值读写：保存即生效免重启，非法写失败不污�
   writeScopeFile({ disabled: [] })
   assert.equal(presetAllowed({ agentPreset: 'router-3' }, effectiveScopeConfig({ disabled: ['z'] })), true, '清空=回到全开')
 })
+
+test('s6 预设发现：目录内子目录必须被列出（withFileTypes 真断言——变异审计案底）', () => {
+  fs.mkdirSync(path.join(process.env.DSH_HOME, '.agent-presets', 'zz-probe'), { recursive: true })
+  const ps = listPresets()
+  assert.ok(ps.includes('zz-probe'), `listPresets 必须含临时预设目录，实际=${JSON.stringify(ps)}`)
+  assert.equal(ps[0], NO_PRESET, '无预设项仍恒在首位')
+})

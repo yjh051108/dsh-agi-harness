@@ -200,7 +200,7 @@ export function checkPredictionSources(sid, predictions) {
       stats.engram++
       hits.push(`engram:「${title}」✓ ${String(r.node.summary || '').slice(0, 40)}`)
     } else {
-      return { ok: false, error: `来源纪律：source「${src.slice(0, 40)}」是隐式自由文本——四形式：read:<path>#L<n>（读锚点）/ probe:<key>（探针台账）/ engram:<title>（图谱锚点，confirmed）/ prior:<文本>（显式先验）。自由文本=先验冒充标准（72% 预言失效案底）。` }
+      return { ok: false, error: `来源纪律：source「${src.slice(0, 40)}」是隐式自由文本——四形式：read:<path>#L<n>（读锚点）/ probe:<key>（探针台账）/ engram:<title>（图谱锚点，confirmed）/ prior:<文本>（显式先验）；亦可传对象形态 {kind:"read",path,line} / {kind:"probe",key} / {kind:"prior",text} / {kind:"engram",title}（免正则歧义）。自由文本=先验冒充标准（72% 预言失效案底）。` }
     }
   }
   return { ok: true, stats, hits }
@@ -243,6 +243,38 @@ export function modelSignature(step) {
 }
 
 /**
+ * v0.8.10 来源 JSON 协议化：对象形态 → 既有字符串规范形（边界一次转换，下游零改动）。
+ * 收益：`read:<path>#L<n>` 靠正则拆路径与行号，路径自身含 `#` 即歧义；对象形态无歧义。
+ * 兼容：字符串原样返回；非法对象返回 null（由 declare 明确拒，不落进含糊的"无来源"）。
+ */
+export function normalizeSource(src) {
+  if (src && typeof src === 'object' && !Array.isArray(src)) {
+    const kind = String(src.kind || '').trim().toLowerCase()
+    if (kind === 'probe') {
+      const key = String(src.key ?? src.probe ?? '').trim()
+      return key ? `probe:${key}` : null
+    }
+    if (kind === 'read') {
+      const p = String(src.path ?? src.file ?? '').trim()
+      if (!p) return null
+      const ln = src.line ?? src.L
+      const n = ln === undefined || ln === null ? '' : String(ln).replace(/^L/i, '').trim()
+      return n ? `read:${p}#L${n}` : `read:${p}`
+    }
+    if (kind === 'prior') {
+      const t = String(src.text ?? src.note ?? '').trim()
+      return t ? `prior:${t}` : null
+    }
+    if (kind === 'engram') {
+      const t = String(src.title ?? src.name ?? '').trim()
+      return t ? `engram:${t}` : null
+    }
+    return null
+  }
+  return typeof src === 'string' ? src : null
+}
+
+/**
  * declareStep：最优律契约落盘（每块开工前）。
  * 契约五段（SPEC-optimal §3）：invariants（状态链）/ predictions（值+来源）/
  * cost（失败模式+防错+权重）/ law（偏差策略：观测到 X 则按预声明动作响应）/
@@ -251,12 +283,17 @@ export function modelSignature(step) {
 export function declareStep(sid, args) {
   const s = loadStack(sid)
   const cur = stackTop(s)
+  // v0.8.10：source 对象形态在边界规范化（非法对象明确拒——不落进含糊的"无来源"）
+  const rawPreds = Array.isArray(args?.predictions) ? args.predictions : []
+  const badSrc = rawPreds.find((p) => p?.source && typeof p.source === 'object' && normalizeSource(p.source) === null)
+  if (badSrc) return { ok: false, error: `来源形态非法：${JSON.stringify(badSrc.source).slice(0, 80)}——对象只认 {kind:"probe",key} / {kind:"read",path,line?} / {kind:"prior",text} / {kind:"engram",title}；或继续用字符串 read:<path>#L<n> / probe:<key> / prior:<文本> / engram:<标题>` }
+  const preds = rawPreds.map((p) => ({ ...p, source: p?.source && typeof p.source === 'object' ? normalizeSource(p.source) : p?.source }))
   const step = {
     n: cur ? cur.n + 1 : 1,
     title: String(args?.title || '').trim(),
     group: String(args?.group || '').trim(), // v0.6.34：步记录归属组（P2-1 组收尾提示的可判依据；v0.6.4 案底后补）
     invariants: (args?.invariants || []).map(String),
-    predictions: (args?.predictions || []).map((p) => ({ key: String(p.key), value: String(p.value), source: String(p.source || '（无来源——既定规则：阈值必有来源）') })),
+    predictions: preds.map((p) => ({ key: String(p.key), value: String(p.value), source: String(p.source || '（无来源——既定规则：阈值必有来源）') })),
     cost: (args?.cost || args?.budget || []).map((c) => ({ failure: String(c.failure), defense: String(c.defense), weight: String(c.weight || '标准：失败态权重→∞（防错=选标准）') })),
     law: (args?.law || []).map((l) => ({ signal: String(l.signal), action: String(l.action) })),
     measure: args?.measure ? { right: String(args.measure.right || ''), wrongSignal: String(args.measure.wrongSignal || ''), channels: (Array.isArray(args.measure.channels) ? args.measure.channels : []).map(String) } : null,
@@ -268,9 +305,9 @@ export function declareStep(sid, args) {
   if (!step.title) return { ok: false, error: 'optimal_declare 需要 title（本块名，与盘档小类名一致——闭合即按此 mark）' }
   if (step.predictions.length === 0) return { ok: false, error: '预测值为空=未推导——至少 1 个可度量结果先算出来（禁止先实现后取值）' }
   // 既定规则 硬化（v0.3 #3 接线发现：v0.2 实况=占位标签无硬拒；闸只增不减合规）：无源=声明期直拒
-  if ((args?.predictions || []).some((p) => !String(p?.source || '').trim())) return { ok: false, error: '既定规则：预测必须逐条含来源（source=公式/标准/实测原话；无来源=无效——防"自造 0.02"冒充标准）。补齐来源后重 declare。' }
+  if (preds.some((p) => !String(p?.source || '').trim())) return { ok: false, error: '既定规则：预测必须逐条含来源（source=公式/标准/实测原话；无来源=无效——防"自造 0.02"冒充标准）。补齐来源后重 declare。' }
   // v0.4.2 来源纪律（既定规则 扩展）：source 三形式 read:/probe:/prior:——自由文本=先验冒充标准（72% 预言失效案底直修）
-  const srcChk = checkPredictionSources(sid, args?.predictions || [])
+  const srcChk = checkPredictionSources(sid, preds)
   if (!srcChk.ok) return { ok: false, error: srcChk.error }
   if (args?.measure && !Array.isArray(args.measure.channels)) return { ok: false, error: 'measure.channels 形状错：需字符串数组 ≥2 条（如 ["盘档: …","运行时: …"]）——契约校验直拒，非实现异常' }
   if (!step.measure || step.measure.channels.length < 2) return { ok: false, error: 'measure.channels 需 ≥2 条独立测量通道（定理5：双通道一致；同源两遍不计）' }
