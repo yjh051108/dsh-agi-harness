@@ -26,3 +26,16 @@ dev_inject_plugin <本仓库>/plugins/dsh-browser-panel   # 可选
 ## 验证
 
 `dev_plugin_status` 看到三个插件均 `[active]` 即成功。
+
+## 预设作用域（可选开关）
+
+默认 `presetScope: "all"`——插件对所有会话全局生效（现状）。
+若希望**仅在配套预设（closedloop-full）下生效**、不影响其他预设，在插件配置处传：
+
+```json
+{ "presetScope": "presets", "presets": ["closedloop-full"] }
+```
+
+- 作用域外的会话：零注入、零接管、写闸静默（插件对该会话完全隐身）；
+- 显式 `/optimal: 任务` 命令不受作用域限制（用户主动=尊重）；
+- 未携带 preset 字段的会话按"不匹配"处理（fail-closed）。
