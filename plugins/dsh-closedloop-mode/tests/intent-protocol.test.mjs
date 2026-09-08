@@ -15,7 +15,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'intent-'))
-const { scanIntent, scanIntentFull, parseIntentEnvelope } = await import('../src/index.js')
+// 单测测单元：直接引 src/intent.js（不拉插件入口 index.js——它带宿主外部依赖，会让审计沙箱基线必红）。
+// index.js 的兼容再导出由 wiring.test.mjs 覆盖。
+const { scanIntent, scanIntentFull, parseIntentEnvelope } = await import('../src/intent.js')
 
 test('ip1 JSON 信封优先，散文不参与', () => {
   const t = '这段我先解释一下：```json\n{"closedloop":{"intent":"approve"}}\n```\n另外我想修改第三组'
@@ -56,4 +58,22 @@ test('ip7 scanIntentFull 溯源三态', () => {
   assert.deepEqual(scanIntentFull('确认'), { intent: 'approve', source: 'text' })
   assert.deepEqual(scanIntentFull('{"closedloop":"approve"}'), { intent: 'approve', source: 'json' })
   assert.deepEqual(scanIntentFull('x'.repeat(300)), { intent: null, source: 'too-long' })
+})
+
+// 以下三条为变异审计杀幸存变异而写（每条断言一个真实行为差异，非凑数）：
+test('ip8 无关 JSON 不吞散文回退（杀 sawEnvelope 初值 true）', () => {
+  assert.equal(scanIntent('{"foo":1} 确认'), 'approve', '没有 closedloop 键=不是信封，散文照常判')
+})
+
+test('ip9 多段围栏 + 超长正文：信封仍生效（杀 m[1]→m[2]）', () => {
+  const t = '```json\n{bad}\n```\n```json\n{"closedloop":"approve"}\n```' + 'x'.repeat(250)
+  assert.equal(scanIntent(t), 'approve', '围栏切分失败则落到长度门（>200）→ null，故本断言能分辨')
+})
+
+test('ip10 长度门边界 201 字（杀 >200 → >201）', () => {
+  assert.deepEqual(scanIntentFull('确认' + 'x'.repeat(199)), { intent: null, source: 'too-long' })
+})
+
+test('ip11 长度门边界 200 字（杀 >200 → >199，即 .length+1）', () => {
+  assert.deepEqual(scanIntentFull('确认' + 'x'.repeat(198)), { intent: 'approve', source: 'text' })
 })

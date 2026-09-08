@@ -56,6 +56,14 @@ test('p1 意图扫描纯函数：修改优先/确认白名单/长文本拒判', 
   assert.equal(scanIntent('x'.repeat(300)), null)
 })
 
+test('p1b 意图模块兼容再导出（v0.8.14：实现搬去 intent.js，index.js 只再导出）', () => {
+  assert.equal(typeof idx.scanIntentFull, 'function')
+  assert.equal(typeof idx.decideFreezeAnswer, 'function')
+  assert.equal(typeof idx.labelIntent, 'function')
+  assert.equal(idx.decideFreezeAnswer({ selected: ['确认·开执行阶段'] }).intent, 'approve', '同一实现')
+  assert.equal(idx.scanIntentFull('确认').source, 'text')
+})
+
 test('p0c 绝对入口（v0.6.31）：环开 persona 首注一次/会话（幂等）+ 启动模式回执任务语（无黑话）', async () => {
   const sid = 'persona-entry'
   let s = { ...initMode(), stage: 'brainstorm', task: 't', cost: { purpose: 'p', assertions: [{ text: 'a', severity: 'major', source: 'x' }], nonGoals: [], assumptions: [], nonGoalsConfirmed: false, aligned: true } }

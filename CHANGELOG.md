@@ -1,5 +1,24 @@
 # 更新说明
 
+## v0.3.5 — 判据运行时三修 + 变异审计纳保 intent.js
+
+### 修复（三处真实根因，均有实测证据）
+- **判据/探针 cwd 落到宿主目录**：本部署 `exec.agent.session.cwd` 为空 → 一切相对路径命令都跑在宿主进程目录（实测 `CWD=C:\Users\Administrator`），v0.8.6「相对路径按会话工作区解析」的承诺未兑现。现补回退链：`session.cwd` → env `DSH_SESSION_CWD`/`DSH_AGENT_CWD` → 从 `DSH_SESSION_JSONL` 目录段解码（`--D-dsh--` → `D:/dsh`）→ 按会话 id 在 `DSH_HOME/sessions/` 下定位 → 宿主 cwd。
+- **组判据超时硬编码 20s**：构建/审计类判据（实测 ~34s）必被误判红。改为 `judgeTimeoutMs()`（默认 120s，env `DSH_CLOSEDLOOP_JUDGE_TIMEOUT_MS` 可调，下限 1s 回默认、上限 15min——只放宽不收紧）。
+- **`optimal_converge` 的组落账漏传 cwd**：该调用点走默认 `process.cwd()`，与 `terminal_check` 的调用点不一致——相对路径判据在 converge 落账时必红。现统一传 `sessionCwd(exec)`。
+
+### 变更
+- **`intent.js` 纳入变异审计**（守护目标 3 → 4 文件）：21 个变异全部杀死（1.0），其中 1 条经机械核验判为等价（`parseIntentEnvelope` 的 `return null` 唯一调用点只做真值判断）。为此补 4 条边界测试（无关 JSON 不吞散文回退 / 多段围栏 + 超长正文 / 长度门 200·201 两点）。
+- **意图单测自包含化**：单测直接引 `src/intent.js`（原先引插件入口会拖入宿主依赖，使审计沙箱基线必红）；`index.js` 的兼容再导出改由 `wiring.test.mjs` 覆盖。
+- **标准棘轮口径统一**：等价变异不再计入分母（与审计 summary 同口径——拿「已证明等价」当「没杀死」是口径错误）。重记后四模块基线均 1.0。
+
+### 验证
+- 全量 390/390；变异审计 21/21 杀死、7 条等价（逐条给证）；棘轮四模块 1.0。
+- 判据实跑实测：相对路径入口在会话工作区解析成功（`CWD=D:\dsh`、`ENTRY=true`）。
+
+### 注意
+- 组判据若用相对路径，需保证该路径在**会话工作区**下存在（本仓库开发环境用 `D:\dsh\scripts\mutation-audit.mjs` 作工作区级入口委托到插件脚本）。
+
 ## v0.3.4 — 意图单一真相（堵住弹窗道误 approve）
 
 ### 变更

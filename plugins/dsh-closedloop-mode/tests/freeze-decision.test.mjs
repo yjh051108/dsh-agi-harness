@@ -11,7 +11,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 const { decideFreezeAnswer, labelIntent, FREEZE_OPTIONS } = await import('../src/intent.js')
-const { decideFreezeAnswer: viaIndex } = await import('../src/index.js')
 
 test('fd1 选项标签前缀协议', () => {
   assert.equal(decideFreezeAnswer({ selected: ['确认·开执行阶段'] }).intent, 'approve')
@@ -45,8 +44,7 @@ test('fd5 选项优先于补充文字', () => {
   assert.equal(r.via, 'label')
 })
 
-test('fd6 空答案 fail-closed，且 index.js 兼容再导出', () => {
+test('fd6 空答案 fail-closed', () => {
   assert.equal(decideFreezeAnswer({}).intent, null)
   assert.equal(decideFreezeAnswer(null).intent, null)
-  assert.equal(typeof viaIndex, 'function', 'index.js 再导出同一实现')
 })

@@ -28,6 +28,7 @@ const TARGETS = [
   { file: 'src/write-gate.js', tests: ['tests/write-gate.test.mjs'] },
   { file: 'src/scope.js', tests: ['tests/scope.test.mjs'] },
   { file: 'src/optimal-engine.js', tests: ['tests/optimal.test.mjs', 'tests/chain.test.mjs', 'tests/maingate.test.mjs', 'tests/demands.test.mjs', 'tests/prepgap.test.mjs'] },
+  { file: 'src/intent.js', tests: ['tests/intent-protocol.test.mjs', 'tests/freeze-decision.test.mjs'] },
 ]
 
 const run = (args, cwd) => {

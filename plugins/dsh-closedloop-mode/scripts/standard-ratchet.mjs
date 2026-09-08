@@ -25,7 +25,9 @@ export function standardsFromLedger(ledgerPath = LEDGER) {
   const j = JSON.parse(readFileSync(ledgerPath, 'utf8'))
   const per = {}
   for (const r of j.ledger) {
-    if (r.skipped || r.syntaxOk === false) continue
+    // v0.8.15 口径统一（实测案底：intent.js 被算成 0.875 而审计 summary 是 1.0——
+    // 等价变异已由人复核证明语义无差，计入分母等于拿「证明等价」当「没杀死」）。
+    if (r.skipped || r.syntaxOk === false || r.equivalent) continue
     per[r.file] ??= { total: 0, killed: 0 }
     per[r.file].total++
     if (r.killed) per[r.file].killed++

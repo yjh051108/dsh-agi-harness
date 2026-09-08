@@ -29,7 +29,8 @@ import { loadSpec, commitSpec } from './v04-grader.js'
 import { zOf, parseOutput, vCompute } from './v04-core.js'
 import { computeC, rankTransition, demoteOnFake, rankLine, recoverRelaxed } from './rank-organ.js'
 import { loadPricing, savePricing, recordSession, shadowC, evaluateSwitch, observeSession, evaluateHealth, learningContent, gBandOf, gBandName } from './pricing-organ.js'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { execSync, execFileSync, spawn } from 'node:child_process'
 import { execCmdSync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
@@ -115,10 +116,58 @@ export function normAcceptItem(x) {
   }
   return String(x)
 }
-/** v0.8.6 会话工作区 cwd（判据/探针/测量命令的基准）：exec.agent.session.cwd 优先，宿主 cwd 兜底。 */
+/** v0.8.6 会话工作区 cwd（判据/探针/测量命令的基准）：exec.agent.session.cwd 优先，宿主 cwd 兜底。
+ *  v0.8.14 回退链（实测案底 probe-cwd-001：本部署 exec.agent.session.cwd 为空 → 判据/探针全部落在
+ *  宿主 cwd C:\Users\Administrator，相对路径判据必红——v0.8.6 承诺「相对路径按会话工作区解析」未兑现）：
+ *  env DSH_SESSION_CWD/DSH_AGENT_CWD → 从 DSH_SESSION_JSONL 目录名解码（--D-dsh-- → D:/dsh）→ 宿主 cwd。 */
 export const sessionCwd = (exec) => {
   const c = String(exec?.agent?.session?.cwd || '').trim()
-  return c || process.cwd()
+  return c || decodeSessionCwd() || workspaceFromSessionId(exec?.agent?.session?.id) || process.cwd()
+}
+
+/** 工作区目录段解码（纯函数可测）：'--D-dsh--' → 'D:/dsh'；非编码段=空串。 */
+export function decodeWorkspaceSegment(seg) {
+  const s = String(seg || '')
+  if (!s.startsWith('--') || !s.endsWith('--') || s.length <= 4) return ''
+  const inner = s.slice(2, -2)
+  return inner.replace(/^([A-Za-z])-/, '$1:/').split('-').join('/')
+}
+
+/** 会话工作区解码（纯函数可测）：env 显式值优先；否则从 DSH_SESSION_JSONL 的 sessions/<seg>/ 段还原。 */
+export function decodeSessionCwd(env = process.env) {
+  for (const k of ['DSH_SESSION_CWD', 'DSH_AGENT_CWD']) {
+    const v = String(env?.[k] || '').trim()
+    if (v) return v
+  }
+  const p = String(env?.DSH_SESSION_JSONL || '')
+  const m = p.match(/[\\/]sessions[\\/]([^\\/]+)[\\/]/)
+  return m ? decodeWorkspaceSegment(m[1]) : ''
+}
+
+/** 宿主侧兜底（v0.8.14 实测：宿主进程 env 里没有 DSH_SESSION_*——那些变量只注入命令子进程）：
+ *  按会话 id 在 DSH_HOME 的 sessions 目录下逐段定位（sessions/<工作区段>/<sid>/），父目录段即工作区。
+ *  找不到=空串（调用方兜底）。 */
+export function workspaceFromSessionId(sid, env = process.env) {
+  const id = String(sid || '').trim()
+  const home = String(env?.DSH_HOME || '').trim()
+  if (!id || !home) return ''
+  const base = join(home, 'sessions')
+  try {
+    for (const seg of readdirSync(base)) {
+      if (!existsSync(join(base, seg, id))) continue
+      const d = decodeWorkspaceSegment(seg)
+      if (d) return d
+    }
+  } catch { /* 目录不可读=无兜底 */ }
+  return ''
+}
+
+/** 组判据超时（v0.8.14）：旧值硬编码 20s——审计/构建类判据（实测 ~90s）必被误判红。
+ *  默认 120s，env DSH_CLOSEDLOOP_JUDGE_TIMEOUT_MS 可调；低于 1s 的配置回默认（只放宽不收紧），上限 15min。 */
+export function judgeTimeoutMs(env = process.env) {
+  const n = Number(env?.DSH_CLOSEDLOOP_JUDGE_TIMEOUT_MS)
+  if (!Number.isFinite(n) || n < 1000) return 120000
+  return Math.min(n, 900000)
 }
 
 export function measureReads(s, runner, cwd = process.cwd()) {
@@ -191,7 +240,7 @@ export function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) {
       if (ax.startsWith('cmd:')) {
         let cmd
         try { cmd = parseAcceptCmd(ax) } catch (e) { cmdFails.push('形态坏：' + e.message); continue }
-        try { execCmdSync(cmd, { timeout: 20000, cwd }) }
+        try { execCmdSync(cmd, { timeout: judgeTimeoutMs(), cwd }) }
         catch (e) {
           const k = classifyCmdError(e)
           cmdFails.push(k.state === 'broken'
@@ -740,7 +789,9 @@ export function optimalConvergeDefinition() {
       if (args?.closeGroup && gTitle) {
         const tgt = s.groups.find((x) => x.title === gTitle)
         if (tgt) { tgt.closeRequested = true; notes.push(`组「${gTitle}」请求落账`) }
-        const tr = trySettleGroups(s, loadStack(sid).steps, await extractSigns(exec))
+        // v0.8.15 漏传 cwd 案底：此处曾走 trySettleGroups 的默认 process.cwd()（宿主目录），
+        // 判据里的相对路径必然落到 C:\Users\Administrator —— 与 terminal_check 的调用点不一致。
+        const tr = trySettleGroups(s, loadStack(sid).steps, await extractSigns(exec), sessionCwd(exec))
         s = tr.state
         notes.push(...tr.notes)
       }
