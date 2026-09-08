@@ -6,8 +6,7 @@
  *   - 会话感知=宿主 session 槽 props.sessionId 唯一来源（同 session-log-download 组件的正式通道）——
  *     旧「全局持久锁 + 最近活跃回退」两机制整体废除（跨会话串台病根，锁键名一并消失）。
  *   - 弹层内设置块（原生面板与齿轮入口）已移除：参数非 GUI（用户裁定「不手动调参」）。
- *   - 面板只追数据：/panel v3（residual/groupsBrief/openStep/audit）+/state v3，旧键一律回退容错。
- *   - V 阶梯柱状图已删（用户拍板 2026-09-04：徽章稳定绑会话后无意义，面板只看当前会话进度）。
+ *   - 面板只追数据：/panel v3（residual/groupsBrief/vLadder/audit）+/state v3，旧键一律回退容错。
  */
 window.__ModuleLoader__.load({
   id: "@dsh-external/dsh-closedloop-mode",
@@ -35,6 +34,9 @@ window.__ModuleLoader__.load({
 .graded-pop{position:fixed;right:14px;top:60px;z-index:99999;background:var(--dsw-bg,#fff);border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;min-width:300px;max-height:80vh;overflow:auto;pointer-events:auto}
 .graded-pop-progress{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .graded-pop-progress b{font-size:16px;color:var(--dsw-alias-label-primary,#222)}
+.v-stair{display:flex;flex-direction:column;align-items:center;min-width:34px}
+.v-stair-bar{width:16px;border-radius:3px 3px 0 0}
+.v-stair-label{font-size:9px;color:var(--dsw-alias-label-tertiary,#999);max-width:44px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .v-stair-wrap{border-top:1px solid var(--dsw-alias-border-l2,#eee);padding-top:6px}
 `
     const tagId = "@dsh-external/dsh-closedloop-mode/graded-tree.css"
@@ -72,16 +74,21 @@ window.__ModuleLoader__.load({
       return e("div", { className: "graded-hint" }, "🧊 权重与组结构已锁（单一锁点）——用户『确认』后开快环，每步实时定序；『修改』全段可逆。")
     }
 
-    /* ---- 当前会话进度面（/panel v3 同源）----
-     * V 阶梯柱状图已按用户拍板移除（2026-09-04：徽章稳定绑定会话后柱阵无意义——
-     * 它画的是整条历史栈，不是"这个会话现在到哪了"）。面板只留进度读数。 */
+    /* ---- V 账本阶梯（/panel v3 同源；呈现不裁数据） ---- */
 
-    function SessionProgress({ panel }) {
+    function VLadder({ panel }) {
+      const run = (panel.vLadder && panel.vLadder.run) || []
+      const H = { far: 14, near: 34, at: 54 }
+      const CR = { far: "#c0392b", near: "#d29922", at: "#2a9d6e" }
       const res = panel.residual || {}
       return e("div", { className: "v-stair-wrap" },
         e("div", { className: "graded-chip", style: { marginBottom: 4 } },
           "残差 " + (res.lastBand || "far") + " · 未落账组 " + (res.groupsOpen ? res.groupsOpen.length : "?") + " · 已闭动作 " + (res.closedCount ?? "?")
           + (res.dipPending || (panel.vLadder && panel.vLadder.dipPending) ? " · dip 挂账" : "")),
+        e("div", { style: { display: "flex", alignItems: "flex-end", gap: 5, height: 76, overflowX: "auto", maxWidth: "100%" } },
+          run.map((r) => e("div", { key: r.n, className: "v-stair", title: "#" + r.n + " " + r.title + " " + r.from + "→" + r.to + (r.mode === "dip" ? "（dip 段）" : "") + (r.pendingDip ? " [挂账]" : "") },
+            e("div", { className: "v-stair-bar", style: { height: (H[r.to] || 14) + "px", background: CR[r.to] || "#7f8c8d" } }),
+            e("div", { className: "v-stair-label", title: r.title }, r.title.length > 6 ? r.title.slice(0, 6) + "…" : r.title)))),
         panel.openStep && e("div", { className: "graded-chip", title: "#" + panel.openStep.n + " " + panel.openStep.title, style: { marginTop: 4, color: "#1a6fb5", fontWeight: 700 } }, "▸ 进行：" + panel.openStep.title),
         Array.isArray(panel.groupsBrief) && panel.groupsBrief.length > 0 && e("div", { className: "graded-hint", style: { marginTop: 3 }, title: panel.groupsBrief.map((g) => g.title + (g.settled ? "✓" : "·未落账") + "（闭" + g.closedActs + "）").join("\n") },
           "组: " + panel.groupsBrief.map((g) => (g.settled ? "✅" : "▫️") + g.title.slice(0, 8)).join(" ")),
@@ -135,7 +142,7 @@ window.__ModuleLoader__.load({
             : null
       const pct = st.total ? Math.round((st.done / st.total) * 100) : 0
       return e("span", { style: { position: "relative" } },
-        e("span", { className: "graded-badge", onClick: () => setOpen((o) => !o), title: "最优律面板（当前会话进度 · 数据=sid=" + (st.sidShort || "?") + "）" },
+        e("span", { className: "graded-badge", onClick: () => setOpen((o) => !o), title: "最优律面板（V 账本 · 数据=当前会话 sid=" + (st.sidShort || "?") + "）" },
           e("span", { className: "graded-badge-stage" }, STAGE_LABEL[st.stage] || st.stage,
           pl && pl.openStep && e("span", { style: { fontSize: "11px", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, "▸" + pl.openStep.title),
           e("span", null, "组 " + st.done + "/" + st.total + " ✓" + pct + "%"),
@@ -153,7 +160,7 @@ window.__ModuleLoader__.load({
           e("div", { className: "graded-hint", style: { marginBottom: "4px" } },
             "另头审: 通过 " + (rt.passed || 0) + " · 打回 " + (rt.rejected || 0) + " · 轮次 " + (rt.rounds || 0) + (rt.pending ? " · 待验 " + rt.pending : "")),
           e("div", { style: { margin: "6px 0" } },
-            pl ? e(SessionProgress, { panel: pl }) : e("div", { className: "graded-hint", style: { padding: "10px 0" } }, "⚠ 进度取数失败/无激活会话——轮询重试中（降级不白屏）")),
+            pl ? e(VLadder, { panel: pl }) : e("div", { className: "graded-hint", style: { padding: "10px 0" } }, "⚠ V 账本取数失败/无激活会话——轮询重试中（降级不白屏）")),
           e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "6px" } },
             e("span", { className: "graded-hint" }, "点击徽章收起 · 数据 /panel+/state（均绑当前会话）")))),
       )
@@ -172,44 +179,9 @@ window.__ModuleLoader__.load({
       return Wrapped
     }
 
-    /* ---- 设置页卡：预设作用域（v0.8.8，绑 settingsScope 命名空间 'closedloop'——宿主服务该节才派发卡片）---- */
-    let scopeSvc = null
-    function ScopeCard() {
-      const [draft, setDraft] = useState(null)
-      if (!scopeSvc) return e("div", { className: "graded-hint" }, "（作用域开关不可用：本部署未组合设置服务）")
-      let val = null
-      try {
-        const snap = scopeSvc.getSnapshot && scopeSvc.getSnapshot()
-        val = snap && (snap.value || snap)
-      } catch { /* 未服务=空态 */ }
-      const cur = draft || (val ? { presetScope: val.presetScope || "all", presets: (Array.isArray(val.presets) ? val.presets : []).join(", ") } : { presetScope: "all", presets: "closedloop-full" })
-      const save = () => {
-        const next = { presetScope: cur.presetScope, presets: String(cur.presets || "").split(",").map((x) => x.trim()).filter(Boolean) }
-        try { scopeSvc.set(next); setDraft(null) } catch (err) { setDraft({ ...cur, err: String((err && err.message) || err).slice(0, 60) }) }
-      }
-      return e("div", { style: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13 } },
-        e("div", { style: { fontWeight: 600 } }, "闭环 · 预设作用域"),
-        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
-          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "all", onChange: () => setDraft({ ...cur, presetScope: "all", err: null }) }), "全局生效（所有预设）"),
-        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
-          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "presets", onChange: () => setDraft({ ...cur, presetScope: "presets", err: null }) }), "仅指定预设"),
-        cur.presetScope === "presets" && e("input", {
-          value: cur.presets, placeholder: "closedloop-full", style: { fontSize: 12, padding: "3px 6px" },
-          onChange: (ev) => setDraft({ ...cur, presets: ev.target.value, err: null }),
-        }),
-        e("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
-          e("button", { className: "graded-badge", onClick: save }, "保存"),
-          cur.err && e("span", { className: "graded-hint", style: { color: "#c0392b" }, title: cur.err }, "保存失败：见悬停")),
-        e("div", { className: "graded-hint" }, "作用域外会话零注入零接管；/optimal 命令不受限；名单逗号分隔，保存即生效（免重启）"))
-    }
-
-    const inject = ["slots", "settingsScope"]
+    const inject = ["slots"]
 
     function apply(ctx) {
-      try { if (typeof ctx.settingsScope?.bind === "function") scopeSvc = ctx.settingsScope.bind({ namespace: "closedloop" }) } catch { /* 未服务=卡走不可用态 */ }
-      ctx.effect(() => ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
-        name: "settings.plugin.item", key: "closedloop", locale: "@dsh-external/dsh-closedloop-mode",
-      }, Safe(ScopeCard))), "closedloop: settings scope card")
       ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
         name: "tool.call.toolview",
         key: "decompose",

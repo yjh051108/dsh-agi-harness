@@ -52,7 +52,7 @@ import { lqrReadout } from './lqr-organ.js'
 import { getModelFingerprint } from './gate-core.js'
 import { PERSONA } from './persona.js'
 import { claim, release } from './quota-organ.js'
-import { presetAllowed } from './scope.js'
+import { presetAllowed, effectiveScopeConfig, writeScopeFile, setLiveScope, validateScopeValue, SCOPE_NS } from './scope.js'
 import { stateFace, weightsFace, stepReminder, batchConfirmLine } from './propose-text.js'
 import { offReceipt, VERSION } from './inject-text.js'
 import {
@@ -67,7 +67,7 @@ export const name = 'dsh-closedloop-mode'
 
 /** 工具集唯一真相（v0.5.4：十四名，audit_dispatch 入列——宿主轮转派发消选择偏差；注册漂移 warn 兜底）。 */
 export const TOOL_NAMES = ['super_task_completion_mode', 'decompose', 'freeze', 'measure_propose', 'probe_record', 'optimal_declare', 'optimal_converge', 'audit_record', 'cost_audit', 'audit_dispatch', 'optimal_rollback', 'optimal_stack', 'revise_do', 'delivery_feedback', 'terminal_check']
-export const inject = ['commands', 'userQuestions', 'webServer', 'tools', 'agents', 'sessions']
+export const inject = ['commands', 'userQuestions', 'webServer', 'tools', 'agents', 'sessions', 'settings']
 export const Config = z.object({ autoStart: z.boolean().default(true), writeGate: z.boolean().default(true), presetScope: z.string().default('all'), presets: z.array(z.string()).default(['closedloop-full']) }) // r67 autoStart 默认开启：首条真人任务在发给模型前自动接管；仅显式 false 才关闭。writeGate 默认开。
 /** 真人帧判类器（介入率同源）：kind=user+rpcId，排 goal 自动续单与 plugin 注入帧。 */
 export function isHumanFrame(ev) {
@@ -186,6 +186,17 @@ export function dampingSignal(s) {
 
 export function apply(ctx, config) {
   let activeSid = null
+  // v0.8.8 设置页作用域节：settings 为硬依赖（声明在 inject 列表→挂载期即满足）。
+  // 案底：惰性 ctx.inject(['settings']) 让新 fiber 挂未决依赖、就绪信号永不完成→reload 无界等待卡死。
+  // 卡片派发规则（官方源码注释实证）：宿主不服务该命名空间 → 卡片永不显示，故 installSection 必需。
+  try {
+    const ScopeSchema = z.object({ presetScope: z.string().default('all'), presets: z.array(z.string()).default(['closedloop-full']) })
+    ctx.settings.installSection(ctx, SCOPE_NS, ScopeSchema, { presetScope: config.presetScope || 'all', presets: Array.isArray(config.presets) ? config.presets : ['closedloop-full'] }, {
+      setSource: (source) => setLiveScope(source),
+      validate: (v) => validateScopeValue(v),
+      onChange: () => {},
+    })
+  } catch (e) { console.warn('[closedloop] 作用域节注册失败（开关回退文件/配置层）:', String(e?.message || e).slice(0, 80)) }
   const offArmed = new Map() // off 双确认窗口（v0.3.1⑥：单条命令误触不清账）
   function backupPersisted(sid) {
     try {
@@ -242,6 +253,27 @@ export function apply(ctx, config) {
         } catch (e) { send({ ok: false, error: String(e?.message || e) }, 500) }
       },
     }, 'closedloop: panel api')
+    return () => d()
+  })
+
+  // v0.8.8 作用域开关读写：自带文件（DSH_HOME/closedloop-scope.json），零宿主服务依赖——
+  // 此前走 settings 服务惰性注入，fiber 挂未决依赖导致 reload 无界等待卡死（案底已治本）
+  ctx.effect(() => {
+    const d = ctx.webServer.register({
+      kind: 'prefix', path: '/graded-mode/api/scope',
+      handler: async (req, res) => {
+        const send = (o, code = 200) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)) }
+        try {
+          if (String(req.method || 'GET').toUpperCase() === 'POST') {
+            let body = ''
+            for await (const ch of req) body += ch
+            send({ ok: true, ...writeScopeFile(JSON.parse(body || '{}')) })
+          } else {
+            send({ ok: true, ...effectiveScopeConfig({ presetScope: 'all', presets: [] }) })
+          }
+        } catch (e) { send({ ok: false, error: String(e?.message || e).slice(0, 120) }, 400) }
+      },
+    }, 'closedloop: scope api')
     return () => d()
   })
 
@@ -344,7 +376,7 @@ export function apply(ctx, config) {
           try {
             const sid = exec?.agent?.session?.id
             if (!sid) return undefined
-            if (!presetAllowed(exec?.agent?.session, config)) return undefined // v0.8.7 预设作用域外=插件静默（不闸不注）
+            if (!presetAllowed(exec?.agent?.session, effectiveScopeConfig(config))) return undefined // v0.8.7 预设作用域外=插件静默（不闸不注）
             const reason = gateWrite({
               toolName: exec.name,
               state: loadState(sid),
@@ -419,7 +451,7 @@ export function apply(ctx, config) {
     const m = txt.match(/^(?:[\\/@])(?:optimal|graded|分级)\s*[:：]?\s*(.+)/s)
     if (m && state(session.id).stage === 'off' && !['off', 'status'].includes(m[1].trim())) {
       setState(session.id, trigger(state(session.id), m[1].trim()))
-    } else if (config.autoStart && presetAllowed(session, config) && isHumanFrame(event) && state(session.id).stage === 'off' && txt.trim().length >= 12) {
+    } else if (config.autoStart && presetAllowed(session, effectiveScopeConfig(config)) && isHumanFrame(event) && state(session.id).stage === 'off' && txt.trim().length >= 12) {
       // r67 完全体：预设开环——真人首条消息即入环（任务=消息本身；≥12 字防空话误开；goal/plugin 帧不触发）
       setState(session.id, trigger(state(session.id), txt.trim().slice(0, 200)))
     }
@@ -428,7 +460,7 @@ export function apply(ctx, config) {
   /* ---------- pre-step：触发 / off / 全段确认-修改扫描（a2 修复主体） / 最小状态面注入 ---------- */
 
   ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
-    if (!presetAllowed(agent?.session, config)) return next() // v0.8.7 作用域外：零注入零接管（显式 /optimal 命令不受限）
+    if (!presetAllowed(agent?.session, effectiveScopeConfig(config))) return next() // v0.8.7 作用域外：零注入零接管（显式 /optimal 命令不受限）
     const sid = agent?.session?.id
     let offJustNow = false
     let startupNeeded = false

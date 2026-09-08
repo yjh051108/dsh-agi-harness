@@ -172,9 +172,44 @@ window.__ModuleLoader__.load({
       return Wrapped
     }
 
-    const inject = ["slots"]
+    /* ---- 设置页卡：预设作用域（v0.8.8，绑 settingsScope 命名空间 'closedloop'——宿主服务该节才派发卡片）---- */
+    let scopeSvc = null
+    function ScopeCard() {
+      const [draft, setDraft] = useState(null)
+      if (!scopeSvc) return e("div", { className: "graded-hint" }, "（作用域开关不可用：本部署未组合设置服务）")
+      let val = null
+      try {
+        const snap = scopeSvc.getSnapshot && scopeSvc.getSnapshot()
+        val = snap && (snap.value || snap)
+      } catch { /* 未服务=空态 */ }
+      const cur = draft || (val ? { presetScope: val.presetScope || "all", presets: (Array.isArray(val.presets) ? val.presets : []).join(", ") } : { presetScope: "all", presets: "closedloop-full" })
+      const save = () => {
+        const next = { presetScope: cur.presetScope, presets: String(cur.presets || "").split(",").map((x) => x.trim()).filter(Boolean) }
+        try { scopeSvc.set(next); setDraft(null) } catch (err) { setDraft({ ...cur, err: String((err && err.message) || err).slice(0, 60) }) }
+      }
+      return e("div", { style: { display: "flex", flexDirection: "column", gap: 6, fontSize: 13 } },
+        e("div", { style: { fontWeight: 600 } }, "闭环 · 预设作用域"),
+        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
+          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "all", onChange: () => setDraft({ ...cur, presetScope: "all", err: null }) }), "全局生效（所有预设）"),
+        e("label", { style: { display: "flex", gap: 6, alignItems: "center" } },
+          e("input", { type: "radio", name: "closedloop-scope", checked: cur.presetScope === "presets", onChange: () => setDraft({ ...cur, presetScope: "presets", err: null }) }), "仅指定预设"),
+        cur.presetScope === "presets" && e("input", {
+          value: cur.presets, placeholder: "closedloop-full", style: { fontSize: 12, padding: "3px 6px" },
+          onChange: (ev) => setDraft({ ...cur, presets: ev.target.value, err: null }),
+        }),
+        e("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+          e("button", { className: "graded-badge", onClick: save }, "保存"),
+          cur.err && e("span", { className: "graded-hint", style: { color: "#c0392b" }, title: cur.err }, "保存失败：见悬停")),
+        e("div", { className: "graded-hint" }, "作用域外会话零注入零接管；/optimal 命令不受限；名单逗号分隔，保存即生效（免重启）"))
+    }
+
+    const inject = ["slots", "settingsScope"]
 
     function apply(ctx) {
+      try { if (typeof ctx.settingsScope?.bind === "function") scopeSvc = ctx.settingsScope.bind({ namespace: "closedloop" }) } catch { /* 未服务=卡走不可用态 */ }
+      ctx.effect(() => ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
+        name: "settings.plugin.item", key: "closedloop", locale: "@dsh-external/dsh-closedloop-mode",
+      }, Safe(ScopeCard))), "closedloop: settings scope card")
       ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
         name: "tool.call.toolview",
         key: "decompose",
