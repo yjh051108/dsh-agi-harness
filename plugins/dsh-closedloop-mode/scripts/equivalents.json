@@ -57,6 +57,14 @@
       "to": "return undefined",
       "line": "parseIntentEnvelope: if (!t.includes('{')) return null",
       "reason": "机械核验（grep 全仓 parseIntentEnvelope 调用）：唯一调用点 scanIntentFull 写 `if (env) ...` 真值判断，null 与 undefined 同 falsy，行为完全一致"
+    },
+    {
+      "file": "src/gate-core.js",
+      "kind": "flip-cmp",
+      "from": "<=",
+      "to": "<",
+      "line": "wilsonLB: if (!n || n <= 0) return 0",
+      "reason": "机械核验：`!n` 已短路 n=0（0 是 falsy），故 `n <= 0` 与 `n < 0` 在 n=0 与 n>0 时判定相同，仅 n<0 时两者都为真——三种输入下结果一致"
     }
   ]
 }

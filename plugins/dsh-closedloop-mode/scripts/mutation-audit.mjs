@@ -33,6 +33,8 @@ const TARGETS = [
   // 在审计沙箱里必红，会把整轮审计卡在基线绿门前）。tools-v3/panel-v3/v04-wiring 均因此不入映射。
   { file: 'src/mode-state.js', tests: ['tests/mode-state-v3.test.mjs', 'tests/auto-contract.test.mjs', 'tests/discrimination.test.mjs', 'tests/judge.test.mjs'] },
   { file: 'src/tools.js', tests: ['tests/infra-cwd.test.mjs', 'tests/delivery-attest.test.mjs', 'tests/probe-tokens.test.mjs', 'tests/user-signs.test.mjs', 'tests/judge-criteria.test.mjs', 'tests/tools-mutation-guard.test.mjs'] },
+  { file: 'src/gate-core.js', tests: ['tests/gate-core.test.mjs', 'tests/model-fingerprint.test.mjs', 'tests/gate-core-model.test.mjs', 'tests/gate-core-guard.test.mjs'] },
+  { file: 'src/run-cmd.js', tests: ['tests/run-cmd.test.mjs', 'tests/run-cmd-tokenize.test.mjs'] },
 ]
 
 const run = (args, cwd) => {

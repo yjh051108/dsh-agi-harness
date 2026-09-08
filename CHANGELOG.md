@@ -1,5 +1,19 @@
 # 更新说明
 
+## v0.3.12 — 变异审计纳保 gate-core + run-cmd（守护目标 6 → 8）
+
+### 变更
+- **`gate-core.js` 与 `run-cmd.js` 纳入变异审计**：50 个变异全部杀死（1.0）。5 条幸存变异逐条处置：
+  - `wilsonLB` 公式系数变异 → 用**独立实现**核对数值（5/10 的 95% 下界 ≈0.2366 外部基准）。
+  - `wilsonLB` 的 `!n || n <= 0` 的 `||→&&` → 负样本数必须返回 0（变异会算出 1.35）。
+  - `recordGateEffect` 未知闸 id 严格返回 `null`（不是 `undefined`）。
+  - `tokenize` 的 `started` 初值 `false→true` → 前导空白不得产出空 token。
+  - `n <= 0 → n < 0` 经机械核验判为**等价**（`!n` 已短路 n=0，三种输入下结果一致），入 `equivalents.json`。
+
+### 验证
+- 新增 `gate-core-guard.test.mjs` 3 条；`run-cmd-tokenize.test.mjs` 补前导空白断言。
+- 全量 **428/428**；变异审计 **50/50 杀死**、等价 8；棘轮**八模块**均 1.0；账本快检 `目标 8 文件 · 变异 50 · 杀死 50 · 幸存 0` 退出 0；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.11 — YAML 标量解析 + argv 单遍分词器
 
 ### 修复

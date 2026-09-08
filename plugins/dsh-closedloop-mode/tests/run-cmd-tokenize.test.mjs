@@ -13,6 +13,7 @@ const { tokenize, execCmdSync } = await import('../src/run-cmd.js')
 test('tk1 空引号参数', () => {
   assert.deepEqual(tokenize('node x.mjs ""'), ['node', 'x.mjs', ''], '空引号=空串 token')
   assert.deepEqual(tokenize("node x.mjs ''"), ['node', 'x.mjs', ''])
+  assert.deepEqual(tokenize('  node x.mjs  '), ['node', 'x.mjs'], '前导/尾随空白不产出空 token（杀 started 初值 true）')
 })
 
 test('tk2 双引号内转义', () => {
