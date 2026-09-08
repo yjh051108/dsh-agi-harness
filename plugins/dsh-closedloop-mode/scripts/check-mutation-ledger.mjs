@@ -41,6 +41,16 @@ const s = j.summary || {}
 const targets = new Set((j.ledger || []).filter((r) => !r.skipped).map((r) => r.file))
 const survived = (s.survived || 0)
 console.log(`账本快检：目标 ${targets.size} 文件 · 变异 ${s.mutations} · 杀死 ${s.killed} · 幸存 ${survived} · 等价 ${s.equivalentExcluded} · 杀死率 ${s.killRate}`)
+// v0.8.22 归因尾：哪些测试在真正杀变异（单杀者=最脆弱的守护点，最先该补第二道断言）
+if (s.attribution && Object.keys(s.attribution).length) {
+  const lines = []
+  for (const [file, by] of Object.entries(s.attribution)) {
+    const top = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t.replace(/^tests\//, '')}×${n}`).join(' ')
+    lines.push(`  ${file}: ${top}`)
+  }
+  console.log('归因（杀死计数）：\n' + lines.join('\n'))
+}
+if (Array.isArray(s.singleKiller) && s.singleKiller.length) console.log(`单杀者 ${s.singleKiller.length} 条（只被一个测试文件杀死）：\n  ` + s.singleKiller.slice(0, 6).join('\n  '))
 if (survived > 0) {
   console.error('⛔ 存在幸存变异（逐条处置：补测试杀死 或 入 equivalents.json 带机械理由）')
   process.exit(1)

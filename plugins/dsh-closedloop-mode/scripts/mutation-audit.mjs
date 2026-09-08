@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { OPS_VERSION, deriveMutations, applyMutation, revertMutation } from './lib/mutation-ops.mjs'
+import { summarizeLedger, attributionOf, killRateOf, countedOf } from './lib/ledger-stats.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PLUGIN = resolve(process.argv[2] || join(HERE, '..'))
@@ -78,14 +79,16 @@ for (const t of TARGETS) {
     }
     writeFileSync(srcPath, pristine)
     const eq = equivalents.find((e) => e.file === t.file && e.kind === m.kind && e.from === m.from && e.to === m.to)
-    ledger.push({ file: t.file, tests: t.tests, kind: m.kind, from: m.from, to: m.to, line: m.line, syntaxOk, killed, note, ...(eq ? { equivalent: true, equivReason: eq.reason } : {}) })
+    ledger.push({ file: t.file, tests: t.tests, kind: m.kind, from: m.from, to: m.to, line: m.line, syntaxOk, killed, killedBy: failed, note, ...(eq ? { equivalent: true, equivReason: eq.reason } : {}) })
   }
 }
 
-const counted = ledger.filter((x) => !x.skipped && x.syntaxOk && !x.equivalent)
+// 口径与统计走 lib/ledger-stats（单一真相，可单测）：counted/killRate/attribution 同源
+const counted = countedOf(ledger)
 const killed = counted.filter((x) => x.killed).length
 const survived = counted.filter((x) => !x.killed)
 const equivalent = ledger.filter((x) => x.equivalent)
+const stats = summarizeLedger(ledger)
 const summary = {
   opsVersion: OPS_VERSION,
   plugin: PLUGIN,
@@ -94,7 +97,10 @@ const summary = {
   equivalentExcluded: equivalent.length,
   killed,
   survived: survived.length,
-  killRate: counted.length ? +(killed / counted.length).toFixed(3) : null,
+  killRate: killRateOf(ledger),
+  // v0.8.22 归因结构化：每条变异的杀手指向不再只活在 note 字符串里
+  attribution: stats.attribution,
+  singleKiller: stats.singleKiller,
   equivalents: equivalent.map((x) => ({ file: x.file, kind: x.kind, mutant: `${x.from} → ${x.to}`, reason: x.equivReason })),
   defects: survived.map((x) => ({ file: x.file, kind: x.kind, mutant: `${x.from} → ${x.to}`, at: x.line, probe: `在 ${x.file} 把 ${x.from} 改成 ${x.to} 后跑 ${x.tests.join(',')} 仍全绿` })),
 }
