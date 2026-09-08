@@ -11,7 +11,7 @@ import crypto from 'node:crypto'
 import {
   initMode, serializeState, deserializeState, migrateLegacy, stateFileFor, legacyFileFor, trigger, deactivate, normalizeCost, loadConceptLimit, loadVerifyMode,
   onCostCommit, onGroupsEdit, onWeightsFreeze, onWeightsConfirmed, recordClosed, markGroupSettled,
-  controlSurface, terminalCheck, allGroupsSettled, STAGES,
+  controlSurface, terminalCheck, allGroupsSettled, STAGES, readAutoConfirm, normalizeGroup,
 } from '../src/mode-state.js'
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex')
@@ -34,6 +34,30 @@ test('p1 全字段 round-trip 等值（含 terminalReport/injected/dipPending/cl
   // 可选域省略（serialize 的 undefined 不落 JSON）
   const bare = { ...initMode(), stage: 'brainstorm', task: 't', cost: onCostCommit(null, { purpose: 'p', assertions: [{ text: 'a', severity: 'minor', source: 's' }] }).cost }
   assert.deepEqual(deserializeState(JSON.parse(JSON.stringify(serializeState(bare)))), bare)
+})
+
+test('p1c 空 doHistory 不添键（杀 .length→.length+1：键集漂移会被 deepEqual 抓到）', () => {
+  const empty = normalizeGroup({ title: 'G', spec: 's', accept: ['a'], verify: 'self', doHistory: [] })
+  assert.equal('doHistory' in empty, false, '空数组=不添键（防 deepEqual 键集漂移）')
+  const some = normalizeGroup({ title: 'G', spec: 's', accept: ['a'], verify: 'self', doHistory: [{ do: 'self', at: 1 }] })
+  assert.equal(Array.isArray(some.doHistory), true, '非空照添')
+})
+
+test('p1d autoConfirm 缺文件/坏 JSON 一律 false（杀 catch→return true：授权不得默认放行）', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cl-ac-'))
+  const prev = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  try {
+    assert.equal(readAutoConfirm(), false, '无设置文件=未授权')
+    fs.writeFileSync(path.join(home, 'graded-settings.json'), '{ bad json')
+    assert.equal(readAutoConfirm(), false, '坏 JSON=未授权')
+    fs.writeFileSync(path.join(home, 'graded-settings.json'), JSON.stringify({ autoConfirm: true }))
+    assert.equal(readAutoConfirm(), true, '显式 true 才放行')
+    fs.writeFileSync(path.join(home, 'graded-settings.json'), JSON.stringify({ autoConfirm: 'yes' }))
+    assert.equal(readAutoConfirm(), false, '非布尔真值不算授权')
+  } finally {
+    if (prev === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prev
+  }
 })
 
 test('terminalCheck 饱和口径（#A/#B）：底档挂账不阻归零；中档挂账照阻', () => {
