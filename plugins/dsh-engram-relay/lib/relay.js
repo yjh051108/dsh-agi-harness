@@ -337,7 +337,7 @@ export class EngramRelay {
                 try {
                     const mh = await this.wake.query(condition, 1, {
                         sessionId: this.currentSessionId ?? undefined,
-                        cwd: this.currentCwd ?? undefined,
+                        cwd: this.resolveViewerCwd(this.currentSessionId ?? undefined),
                     });
                     if (mh.engrams.length > 0) {
                         const e = mh.engrams[0];
@@ -407,12 +407,16 @@ export class EngramRelay {
                 // 融合：每次 API 调度前都注入（不限于主对话轮）——sessionId 可缺省
                 // （后台/子任务/工具内推理），viewer 无会话时 isVisible 只放行 global 层。
                 const sessionId = options.sessionId ?? '';
-                // 分层准入需要查看者视角：sessionId + 当前工作目录（cwd 经 turn-stopping 追踪）
+                // 分层准入需要查看者视角：sessionId + 该会话自己的工作目录。
+                // ⚠️ 不能直接用全局 currentCwd：进程级单字段，多会话并发时后写者
+                // 覆盖先写者，会把另一会话的 project 层记忆按错误 cwd 过滤。
+                // 改为按 sessionId 解析，currentCwd 仅兜底（见 resolveViewerCwd）。
+                const viewerCwd = this.resolveViewerCwd(sessionId || undefined);
                 const _t0 = Date.now();
-                const wakeP = this.wake.maybeWake(sessionId, options, { cwd: this.currentCwd ?? undefined, turn: this.lastTurnAt }).then((h) => {
+                const wakeP = this.wake.maybeWake(sessionId, options, { cwd: viewerCwd, turn: this.lastTurnAt }).then((h) => {
                     if (h) {
                         // v0.4.0 性能观测：唤醒耗时入 distill-debug.log（p50/p95 收敛数据源）
-                        this.debugLog(`wake ${h.reason}${h.pressure ? ' [pressure]' : ''} items=${h.engrams.length} took=${Date.now() - _t0}ms`);
+                        this.debugLog(`wake ${h.reason}${h.pressure ? ' [pressure]' : ''} items=${h.engrams.length} cwd=${viewerCwd ?? 'none'} took=${Date.now() - _t0}ms`);
                     }
                     return h;
                 }).catch((error) => {
@@ -743,6 +747,32 @@ export class EngramRelay {
     lastTurnAt = 0;
     /** 当前工作目录（分层准入：project 层按 cwd 过滤；turn-stopping 持续追踪）。 */
     currentCwd = null;
+    /**
+     * 解析查看者工作目录（分层准入中 project 层的边界）。
+     *
+     * 优先按会话解析：agents 服务 → 该会话 header.cwd（与图谱 API
+     * graph-api.ts:resolveViewer 同一口径）；再回退到最近一次 turn-stopping
+     * 捕获的 currentCwd；最后回退到 store 里最近写入的 project 层节点所属
+     * 项目（热重载后 currentCwd 尚未捕获时的兜底）。
+     *
+     * ⚠️ 不能只用 currentCwd：它是进程级单字段，任何会话的 turn-stopping
+     * 都会覆盖它（下方写入处），多会话并发时后写者赢——拿它当每个会话的
+     * viewer.cwd 会让另一会话的 project 层记忆被错误过滤（表现为 wake
+     * items=0）。
+     */
+    resolveViewerCwd(sessionId) {
+        if (sessionId) {
+            const agents = this.ctx.get('agents');
+            const cwd = agents?.get?.(sessionId)?.session?.header?.cwd;
+            if (typeof cwd === 'string' && cwd !== '')
+                return cwd;
+        }
+        if (this.currentCwd)
+            return this.currentCwd;
+        const recent = this.store.query({ layer: 'project', limit: 1, recent: true });
+        const fallback = recent[0]?.projectId;
+        return typeof fallback === 'string' && fallback !== '' ? fallback : undefined;
+    }
     /**
      * 供工具使用的唤醒查询入口。
      * @param viewer - 查看者视角（分层准入：{ sessionId, cwd }）。
