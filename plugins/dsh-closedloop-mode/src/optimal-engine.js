@@ -376,18 +376,30 @@ export function extractAgreed(item, key, declared) {
 }
 
 // 锚定在值串开头（v0.4.4 版串案底的既有纪律：非锚定会误判 v0.4.5==v0.4.4）
-const leadNum = (x) => (String(x).trim().match(/^\d+(?:\.\d+)?/) || [])[0] || ''
-const allNums = (x) => (String(x).match(/\d+(?:\.\d+)?/g) || [])
-/** 等值三阶（v0.8.1）：① raw 严格等值 ② 两侧均以数字开头→比前导数字 ③ 否则比**全部数字序列**
- *  —— ③ 兼容「命中 1」「14 行」这类词数混排声明值，同时仍拒「v0.4.5 vs v0.4.4」（序列不同）。 */
-function valueEq(a, b) {
+// v0.8.12 数值协议化：数字正则补符号位与指数（旧 /\d+(?:\.\d+)?/ 不含 '-'，降级层把 -1 与 1 判等）；
+// 比较一律走 numEq——同一数值的不同序列化归一（1 == 1.0 == 01 == 3.50），非纯数值串仍按字符串比。
+const NUM_SRC = '[-+]?\\d+(?:\\.\\d+)?(?:[eE][-+]?\\d+)?'
+const NUM_ANY = new RegExp(NUM_SRC, 'g')
+const NUM_PURE = new RegExp(`^${NUM_SRC}$`)
+const leadNum = (x) => (String(x).trim().match(new RegExp(`^${NUM_SRC}`)) || [])[0] || ''
+const allNums = (x) => (String(x).match(NUM_ANY) || [])
+/** 数值等价（v0.8.12）：两侧均为纯数值串→按 Number 比；否则退回字符串比（版本串 v0.4.5 ≠ v0.4.4）。 */
+function numEq(a, b) {
+  const x = String(a).trim(), y = String(b).trim()
+  if (NUM_PURE.test(x) && NUM_PURE.test(y)) return Number(x) === Number(y)
+  return x === y
+}
+/** 等值三阶（v0.8.1，v0.8.12 数值协议化）：① raw 严格等值 ② 两侧均以数字开头→比前导数字
+ *  ③ 否则比**全部数字序列**（逐位按数值比）——③ 兼容「命中 1」这类词数混排声明值，
+ *  同时仍拒「v0.4.5 vs v0.4.4」（序列不同）。数字提取含符号位，杜绝 -1 被降级成 1。 */
+export function valueEq(a, b) {
   const x = String(a).trim(), y = String(b).trim()
   if (!x || !y) return false
   if (x === y) return true
   const nx = leadNum(x), ny = leadNum(y)
-  if (nx && ny) return nx === ny
+  if (nx && ny) return numEq(nx, ny)
   const ax = allNums(x), ay = allNums(y)
-  return ax.length > 0 && ax.length === ay.length && ax.every((v, i) => v === ay[i])
+  return ax.length > 0 && ax.length === ay.length && ax.every((v, i) => numEq(v, ay[i]))
 }
 
 /** v0.6.32 导出（语义裁判复用——单一真相）：单行对账匹配判定。
@@ -419,12 +431,15 @@ export function convergeStep(sid, args) {
   if (!cur) return { ok: false, error: '无 open 步——先 optimal_declare（optimal-drive：无推导不实现）' }
   if (cur.status !== 'open') return { ok: false, error: `步${cur.n}「${cur.title}」已 ${cur.status}——无需重复收敛` }
   cur.agreed = (args?.agreed || []).map(String)
-  // v0.6.29 刀二（导演定向「降低交互摩擦税」）：agreedPairs 结构化入参——工具自渲染合规行，
-  // 格式战从可能变不可能（案底：对账格式战×1+探针引用×1，全是为协议费心）。与字符串路径并存兼容。
+  // v0.6.29 刀二：agreedPairs 结构化入参。v0.8.11 去正则：旧实现把 pairs 渲染成字符串、
+  // 再由 agreedMatch 用正则重解（结构化进、正则出）——键/值含分隔符或他对文本含同名字符串
+  // 时会误取他行。现同时保留结构化副本，判定优先走它；渲染串仅供回执/账本阅读。
   if (Array.isArray(args?.agreedPairs)) {
-    const rendered = args.agreedPairs
+    const pairs = args.agreedPairs
       .filter((p) => p && p.key != null && p.measured != null && p.predicted != null)
-      .map((p) => `${String(p.key)}: 实测 ${String(p.measured)} ≠ 预测 ${String(p.predicted)}${p.channel ? `（通道: ${String(p.channel)}）` : ''}`)
+      .map((p) => ({ key: String(p.key), measured: String(p.measured), predicted: String(p.predicted), channel: p.channel ? String(p.channel) : '' }))
+    cur.agreedPairs = [...pairs, ...(Array.isArray(cur.agreedPairs) ? cur.agreedPairs : [])]
+    const rendered = pairs.map((p) => `${p.key}: 实测 ${p.measured} ≠ 预测 ${p.predicted}${p.channel ? `（通道: ${p.channel}）` : ''}`)
     cur.agreed = [...rendered, ...cur.agreed]
   }
   cur.discrepancies = (args?.discrepancies || []).map(String)
@@ -440,9 +455,18 @@ export function convergeStep(sid, args) {
       // 带 measure 的断言由引擎实跑得 V——与写法无关。
       const forced = []
       for (const p of numeric) {
-        const item = cur.agreed.find((a) => String(a).includes(p.key))
-        if (!item) continue // 无 agreed 覆盖：尚未声明测量结果，不校验
-        const m = agreedMatch(item, p.key, p.value)
+        const pair = (Array.isArray(cur.agreedPairs) ? cur.agreedPairs : []).find((x) => x.key === p.key)
+        let m
+        if (pair) {
+          // 结构化路径（零正则）：实测须等于声明值；复述预测若给出亦须等于声明值
+          if (!/\d/.test(pair.measured)) m = { ok: false, reason: 'no-number', a: pair.measured, b: p.value }
+          else if (pair.predicted && !valueEq(pair.predicted, p.value)) m = { ok: false, reason: 'declared-mismatch', a: pair.measured, b: pair.predicted }
+          else { const ok = valueEq(pair.measured, p.value); m = { ok, a: pair.measured, b: p.value, measured: pair.measured, channel: pair.channel, reason: ok ? 'match' : 'unequal' } }
+        } else {
+          const item = cur.agreed.find((a) => String(a).includes(p.key))
+          if (!item) continue // 无 agreed 覆盖：尚未声明测量结果，不校验
+          m = agreedMatch(item, p.key, p.value)
+        }
         if (m.ok) continue
         if (m.reason === 'no-number') forced.push(`${p.key}: 无数值实证（对账须给实测数字，且与声明值 ${p.value} 相等；空话/占位词≠测量，实测缺位=未验证）`)
         else if (m.reason === 'declared-mismatch') forced.push(`${p.key}: 复述的预测 ${m.b} 与声明值 ${p.value} 不符（照声明核实测——改声明走 rollback 重推，别在 agreed 里换数）`)

@@ -1,5 +1,19 @@
 # 更新说明
 
+## v0.3.2 — 工具 API JSON 协议化（去正则脆弱性）
+
+### 新增
+- **source 对象形态**：`predict[].source` 除字符串 `read:path#L12` / `probe:key` / `prior:文本` / `engram:标题` 外，接受结构化对象 `{kind:"probe",key}` / `{kind:"read",path,line}` / `{kind:"prior",text}` / `{kind:"engram",title}`——键值含分隔符时不再靠正则重解，非法形态显式拒绝（`来源形态非法：…`）。
+
+### 变更
+- **对账走结构化路径（零正则）**：`optimal_converge` 的 `agreedPairs` 保留结构化副本并优先判定，渲染串仅供回执阅读。旧实现把结构化入参渲染成字符串再用正则反解——键名出现在他行文本时会误取他行实测值（`agreed-structured.test.mjs` as1/as2 为实证）。
+- **数值按数值比，不按字符串比**：`valueEq` 新增数值等价层——`1` 与 `1.0`、`01` 与 `1`、`3.50` 与 `3.5` 判等；数字提取补符号位与指数，`-1` 不再被降级层吞成 `1`；版本串护栏保留（`v0.4.5` ≠ `v0.4.4`）。不引入浮点容差。
+
+### 验证
+- 全量测试 369/369（新增 `value-eq.test.mjs` 5 条 + `agreed-structured.test.mjs` 4 条）。
+- 变异审计（opsVersion=v2）：杀死率 14/14 = 1.0，等价变异 6 条（逐条给证），标准棘轮无下降。
+- 热重载实测：`before [active] → after [active]`，秒级返回。
+
 ## v0.3.0 — 预设作用域（逐预设开关）
 
 ### 新增
