@@ -198,13 +198,27 @@ window.__ModuleLoader__.load({
         return () => { live = false }
       }, [])
       const toggle = (name, on) => {
-        setRows((prev) => {
-          const cur = prev || { presets: [], disabled: [] }
-          const next = { ...cur, disabled: on ? cur.disabled.filter((x) => x !== name) : [...new Set([...cur.disabled, name])] }
-          try { if (scopeSvc && scopeSvc.set) scopeSvc.set({ disabled: next.disabled }) } catch (e2) { setErr(String((e2 && e2.message) || e2).slice(0, 60)) }
-          return next
-        })
+        const cur = rows || { presets: [], disabled: [] }
+        const next = { ...cur, disabled: on ? cur.disabled.filter((x) => x !== name) : [...new Set([...cur.disabled, name])] }
+        setRows(next)
         setErr(null)
+        // v0.8.29 持久化（案底：拨完关面板又变全选）：
+        // ① 先写插件自带文件 API——本地落盘、同步返回，是作用域的行为真源（宿主 settings 不可用时也生效）；
+        // ② 再 best-effort 同步宿主 settings 节：宿主契约是 set(field, value) 双参，
+        //    旧写法把整个对象当 field 传进去，会被 mutate 的 !ok 分支静默回滚。
+        Promise.resolve()
+          .then(() => fetch(SCOPE_API, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ disabled: next.disabled }),
+          }))
+          .then((r) => r.json())
+          .then((j) => {
+            if (!j || !j.ok) throw new Error((j && j.error) || "作用域写入被拒绝")
+            setRows((prev) => (prev ? { ...prev, disabled: Array.isArray(j.disabled) ? j.disabled : prev.disabled } : prev))
+            try { if (scopeSvc && scopeSvc.set) return scopeSvc.set("disabled", next.disabled) } catch { return null }
+          })
+          .catch((e2) => setErr(String((e2 && e2.message) || e2).slice(0, 80)))
       }
       const body = !rows ? e("div", { className: "cl-row-hint" }, "读取预设清单中…") : e("div", null,
         rows.presets.map((name) => e("label", { key: name, className: "cl-row" },

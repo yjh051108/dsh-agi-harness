@@ -99,3 +99,20 @@ export function mirrorScopeToFile() {
   if (!v) return null
   return writeScopeFile(v)
 }
+
+/** v0.8.29 装载期护栏（案底 2026-09-08：用户「选完退出又全选」）。
+ *  宿主 `settings.installSection` 在**装载时同步调一次** hooks.onChange（dsh-settings
+ *  lib/index.js:338）；此刻宿主解析值还是基值（存储节为空 → `{disabled:[]}`），
+ *  直接镜像就把活值文件刷成「全选」，而 `effectiveScopeConfig` 文件优先 → 重启即全选。
+ *  用法：apply 里先建护栏 → onChange 走 onHostChange() → installSection 返回后 arm()。
+ *  装载期返回 null（不动文件）；装载后的真实变更才镜像；非法活值吞错不落盘。 */
+export function createScopeMirror() {
+  let armed = false
+  return {
+    arm() { armed = true },
+    onHostChange() {
+      if (!armed) return null
+      try { return mirrorScopeToFile() } catch { return null }
+    },
+  }
+}

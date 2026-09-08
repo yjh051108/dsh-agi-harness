@@ -1,5 +1,17 @@
 # 更新说明
 
+## v0.3.20 — 预设作用域真的能存住了（卡片写入形态 + 装载镜像护栏）
+
+### 修复
+- **卡片拨动不落盘（真因一：调用形态不匹配宿主契约）**：宿主 `ctx.settingsScope.bind()` 的写入口是 **`set(field, value)` 双参**（`dsh-client-ui-settings/lib/client.js:1015`，内部展开为 `{op:"set", path:[field], value}`）。卡片此前传的是**一个对象** `set({disabled:[…]})` → `path:[{disabled:[…]}]`、`value:undefined` → 宿主判非法，客户端 `mutate` 在 `if (!response.ok) { recover(); return }` 分支**静默回滚**：勾选框只在 React 本地状态里变，宿主设置文档里根本没有 `closedloop` 节（实测 `settings.yaml` 无此节）。现改为先 POST 插件自带文件 API（本地同步落盘 = 行为真源），再 `set("disabled", …)` 双参同步宿主节；失败不再静默，落到卡片红字提示。
+- **重启后又变全选（真因二：装载时把基值镜像进活值文件）**：宿主 `settings.installSection` 在**装载时同步调一次** `hooks.onChange`（`dsh-settings/lib/index.js:338`）；那一刻宿主解析值还是基值 `{disabled:[]}`，而 v0.3.19 的 `onChange` 直接调 `mirrorScopeToFile()`，于是每次重载都把 `closedloop-scope.json` 刷成「全选」——配合「文件优先」读法，用户选择被自己覆盖。现新增 `createScopeMirror()` 护栏：**装载期不动文件**，`installSection` 返回后 `arm()` 才放行真实变更；插件自带 scope API 的 POST 改为**双写**（文件 + `settings.update`），两源不再分叉。
+
+### 验证（本机实跑）
+- 新增 `tests/scope-persist.test.mjs` **6 条**：修复前 **4 绿 2 红**（红的两条正对两条根因 → 测试确实能抓 bug），修复后 **6/6 绿**。
+- 全量 **487/487**（基线 481 + 6）；发布副本（v0.3.19 基线叠加）**465/465**（基线 459 + 6）。
+- 装机实测：构建 → 热重载 → `POST {disabled:["__scope_probe__"]}` → `GET` 读回同值 → 磁盘 `closedloop-scope.json` 同值 → `settings.yaml` 出现 `closedloop` 节 → **再热重载一次，文件与读数仍是该值**（「退出又全选」那条路已断）→ 已还原 `{"disabled":[]}`。
+- 独立红队复核两轮（fresh 子代理直读盘档）：均 `verdict=pass`。
+
 ## v0.3.19 — 浏览器工具全局插件 + 作用域卡片落盘 + 进程释放纪律
 
 ### 新增
