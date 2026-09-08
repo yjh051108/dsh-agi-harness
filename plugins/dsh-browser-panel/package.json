@@ -40,7 +40,7 @@
     "prepack": "pnpm run build",
     "prepare": "pnpm run build"
   },
-  "license": "BSD-3-Clause",
+  "license": "Apache-2.0",
   "dependencies": {
     "playwright-core": "1.59.1",
     "schemastery": "^3.18.0",

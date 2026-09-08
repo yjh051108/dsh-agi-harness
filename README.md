@@ -45,5 +45,16 @@ cd plugins/dsh-closedloop-mode && node --test tests/
 
 ## 许可
 
-Apache-2.0（见 LICENSE）。
+Apache-2.0（见 LICENSE，全文 verbatim）。
+
+第三方组件：
+
+| 组件 | 来源 | 许可 |
+|---|---|---|
+| `plugins/dsh-engram-relay/model/bge-small-zh/` | BAAI bge-small-zh-v1.5（量化版） | Apache-2.0 |
+| `plugins/dsh-engram-relay/lingshu/` | 灵枢知识库（本项目生成数据） | Apache-2.0 |
+
+注：`dsh-engram-relay` 与 `dsh-browser-panel` 的 `license` 字段原为脚手架模板默认的
+BSD-3-Clause（非第三方约束），已统一为 Apache-2.0。
+
 
