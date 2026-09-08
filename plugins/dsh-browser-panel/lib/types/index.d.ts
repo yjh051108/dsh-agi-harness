@@ -17,7 +17,7 @@ import { type ToolsContext } from './tools.ts';
 import type { VisionOptions } from './vision.ts';
 /** Minimal Cordis context carrying the host services this plugin needs. */
 interface HostContext extends ToolsContext {
-    httpServer: {
+    webServer: {
         register(route: {
             kind: 'exact';
             path: string;

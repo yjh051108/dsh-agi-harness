@@ -30,7 +30,7 @@ function profileDirForHost(sessionId: string): string {
 
 /** Minimal Cordis context carrying the host services this plugin needs. */
 interface HostContext extends ToolsContext {
-  httpServer: {
+  webServer: {
     register(route: {
       kind: 'exact'
       path: string
@@ -44,7 +44,7 @@ interface HostContext extends ToolsContext {
 export const name = 'browser-panel'
 
 /** Services required by this plugin. */
-export const inject = ['httpServer', 'tools']
+export const inject = ['webServer', 'tools']
 
 /** Plugin config: tool budgets plus panel frame quality. */
 export interface Config {
@@ -131,8 +131,8 @@ export function apply(ctx: HostContext, config: Config): void {
   })
 
   /** 路由注册挂 effect：热重载/卸载时自动注销（否则旧 fiber 路由残留导致 duplicate route）。 */
-  const registerRoute = (route: Parameters<HostContext['httpServer']['register']>[0]): void => {
-    ctx.effect(() => ctx.httpServer.register(route), 'browser-panel:route')
+  const registerRoute = (route: Parameters<HostContext['webServer']['register']>[0]): void => {
+    ctx.effect(() => ctx.webServer.register(route), 'browser-panel:route')
   }
 
   registerRoute({
