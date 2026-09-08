@@ -32,14 +32,12 @@
 
 **依据**：`grep` 全仓正则后，仍未协议化的高风险点：
 
-1. `src/tools.js` 探针 token 提取 `([^\s=:：,，。;；()（）\[\]【】]+)=(\d+(?:\.\d+)?)`——**负号/指数不匹配**（`x=-0.5` 取不到），会漏证据导致 declare 误拒。
-2. `src/tools.js` `delivery_feedback` 的 `交付反馈\s*[:：]?\s*(accepted|needed_fix|rejected)`——人话里出现「不是交付反馈 accepted」会误判（同类漏洞，v0.8.13 已在意图通道修过）。
-3. `src/gate-core.js` 用正则解析 `settings.yaml`（`/^\s+provider:\s*([^#\r\n]+)/`）——YAML 缩进/引号/多行变体会漏读，影响模型指纹。
-4. `src/run-cmd.js` 引号剥离 `/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g`——嵌套/转义边界未覆盖测试。
+1. `src/gate-core.js` 用正则解析 `settings.yaml`（`/^\s+provider:\s*([^#\r\n]+)/`）——YAML 缩进/引号/多行变体会漏读，影响模型指纹（引号值会把引号带进指纹）。
+2. `src/run-cmd.js` 引号剥离 `/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g`——嵌套/转义边界未覆盖测试。
 
 **验证**：每条修完补对应单测（先写「旧实现误判」的实证用例，再写新行为）。
 
-## P1 · 判据/探针运行时已修项的回填测试
+## P2 · 判据/探针运行时已修项的回填测试
 
 **依据**：v0.3.5 修了三处运行时根因（判据 cwd 回退链、判据超时可配、`optimal_converge` 落单漏传 cwd），其中**只有 cwd 回退链有单测**（`tests/infra-cwd.test.mjs` 3 条）。「落单漏传 cwd」这类**调用点漏参**目前只能靠真跑发现。
 
@@ -47,10 +45,10 @@
 
 **验证**：故意去掉一次 `sessionCwd(exec)` 参数，测试必须变红。
 
-## P2 · CI 激活（阻塞中）
+## P3 · CI 激活（阻塞中）
 
 **依据**：`docs/ci.yml` 模板已在仓库，但 GitHub Actions 需要 `workflow` scope——设备码流程需人工授权（**这是唯一需要人的一步**）。在此之前，本地跑 `audit:mutation` + `check-mutation-ledger` 作为替代门。
 
 ## 已闭合（避免重复劳动）
 
-- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js` 与 `mode-state.js` 纳保变异审计 · 棘轮等价变异不计分母。
+- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js` 与 `mode-state.js` 纳保变异审计 · 棘轮等价变异不计分母 · 回炉分层协议化（`discrepancyCodes`）· 真人签收通道协议化（信封 + token 规范化）· 交付反馈取证归一/含混拒收/信封 · 探针 token 符号位与指数。

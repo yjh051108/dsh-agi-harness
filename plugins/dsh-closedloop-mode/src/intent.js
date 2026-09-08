@@ -62,6 +62,20 @@ export function parseSignEnvelope(text) {
   return [...new Set(arr.map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean))]
 }
 
+/** 交付反馈结果枚举（v0.8.18）。 */
+export const DELIVERY_RESULTS = ['accepted', 'needed_fix', 'rejected']
+const DELIVERY_ENUM = new Set(DELIVERY_RESULTS)
+
+/** JSON 交付反馈信封（v0.8.18）：{"closedloop":{"delivery":"accepted"}}。
+ *  返回小写枚举值；无信封=null；形态非法=null（由调用方决定 fail-closed 口径——取证层要求「要么信封、要么散文唯一命中」）。 */
+export function parseDeliveryEnvelope(text) {
+  const { value, saw } = parseClosedloopEnvelope(text)
+  if (!saw) return null
+  const raw = value && typeof value === 'object' && !Array.isArray(value) && typeof value.delivery === 'string' ? value.delivery : null
+  const norm = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  return DELIVERY_ENUM.has(norm) ? norm : null
+}
+
 // 散文回退（信封缺席时）：分句 + 否定感知——旧实现纯子串，「先不要确认」「别确认」「not ok」都含 approve
 // 子串→误判 approve（weights 段=直接锁合同）。现按分句判定：分句内否定词先于确认词=否定式（reject）。
 const REJECT_RE = /修改|拒绝|取消|不同意|建议|改成|改为|调整为|调整|reject/i

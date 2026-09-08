@@ -24,7 +24,7 @@ import { weightsFace, distillDraft } from './propose-text.js'
 import { nearField } from './near-field.js'
 import { auditBrief, parseVerdict, recordAuditVerdict } from './audit-dispatch.js'
 import { dispatchCard } from './audit-rotation.js'
-import { decideFreezeAnswer, parseSignEnvelope } from './intent.js'
+import { decideFreezeAnswer, parseSignEnvelope, parseDeliveryEnvelope, DELIVERY_RESULTS } from './intent.js'
 import { loadSpec, commitSpec } from './v04-grader.js'
 import { zOf, parseOutput, vCompute } from './v04-core.js'
 import { computeC, rankTransition, demoteOnFake, rankLine, recoverRelaxed } from './rank-organ.js'
@@ -581,8 +581,7 @@ export function probeRecordDefinition() {
       book[key] = { cmd, at: Date.now(), exit: code, output: out.slice(-1000) }
       saveProbes(sid, book)
       // v0.4.3 口径对齐辅助（R3-F-R3-2 直修：includes() 布尔 vs 计数）：列可解析 key=value，引全键防抄错键
-      const tokens = []
-      for (const m of String(out).matchAll(/([^\s=:：,，。;；()（）\[\]【】]+)=(\d+(?:\.\d+)?)/g)) tokens.push(`${m[1]}=${m[2]}`)
+      const tokens = probeTokens(out)
       const silentFail = code !== 0 && String(out).trim() === '' ? '\n⚠ 彻底静默失败（stdout/stderr 皆空）=命令大概率没跑起来（路径/引号/编码）——先 pwsh 直跑该命令复现定位，别对着空台账猜' : ''
       onProbeSuccess({ key, exit: code })
       try {
@@ -970,8 +969,42 @@ export function reviseDoDefinition() {
   }
 }
 
-/** 开发者交付反馈：工具参数不是证据，必须有同会话最近真人帧的固定结果语法。 */
-export function deliveryFeedbackDefinition() {
+/** 探针 token 提取（v0.8.18 协议化）：列 `key=value` 供模型对齐语义。
+ *  旧正则 `(\d+(?:\.\d+)?)` 不含符号位与指数——`x=-0.5` / `y=1e3` 取不到（台账漏值，模型照抄错）。
+ *  返回 ['key=value', ...]（值原样保留，不做数值归一——这里只负责「看见」。 */
+export function probeTokens(out) {
+  const toks = []
+  const s = String(out ?? '')
+  // ① `key=value`（任意键）；② `key: value`（键须以字母/下划线/CJK 开头——避免把时间戳 12:30 当 token）
+  for (const m of s.matchAll(/([^\s=:：,，。;；()（）\[\]【】]+)=([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/g)) toks.push(`${m[1]}=${m[2]}`)
+  for (const m of s.matchAll(/([A-Za-z_\u4e00-\u9fa5][^\s=:：,，。;；()（）\[\]【】]*)[:：]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/g)) toks.push(`${m[1]}=${m[2]}`)
+  return toks
+}
+
+/** 交付反馈取证（v0.8.18 协议化）：返回 { result, via } 或 { error }。
+ *  ① JSON 信封 {"closedloop":{"delivery":"accepted"}}——零散文猜测；
+ *  ② 散文「交付反馈 accepted」——取**全部**命中并归一大小写/分隔符（旧实现 first-match-wins + 保留原大小写：
+ *     「交付反馈 Accepted」拿到 'Accepted' 与参数 'accepted' 不等=误拒；「不是交付反馈 accepted，而是 rejected」
+ *     取到 accepted=记错质量）。多个不同结果词=含混，拒收不猜。 */
+export function parseDeliveryAttestation(text) {
+  const t = String(text || '')
+  const env = parseDeliveryEnvelope(t)
+  if (env) return { result: env, via: 'json' }
+  const hits = new Set()
+  for (const m of t.matchAll(/(?:交付反馈)[\s:：=]*([A-Za-z_]+)/g)) {
+    const w = String(m[1] || '').toLowerCase()
+    if (!DELIVERY_RESULTS.includes(w)) continue
+    // 否定式前缀（「不是交付反馈 accepted」）=该命中作废，不当作证据
+    const before = t.slice(Math.max(0, m.index - 6), m.index)
+    if (/不|非|没|未|\bnot\b|\bno\b/i.test(before)) continue
+    hits.add(w)
+  }
+  if (hits.size === 0) return { result: null, via: null }
+  if (hits.size > 1) return { error: `交付反馈取证含混：真人帧里出现多个结果词（${[...hits].join('、')}）——请明确只留一个（或改用信封 {"closedloop":{"delivery":"accepted"}}）` }
+  return { result: [...hits][0], via: 'text' }
+}
+
+/** 开发者交付反馈：工具参数不是证据，必须有同会话最近真人帧的固定结果语法。 */export function deliveryFeedbackDefinition() {
   return {
     name: 'delivery_feedback',
     description: '记录开发者对已终验交付的真实结果：result=accepted|needed_fix|rejected，可选 postDeliveryDefect/note。模型参数不是开发者结果证据：调用前最近一条真人消息必须逐字含「交付反馈 accepted」「交付反馈 needed_fix」或「交付反馈 rejected」之一，且结果必须一致；无真人帧、未终验或不一致一律拒绝。未收到反馈的终验只记 self_checked，不冒充 accepted。',
@@ -998,8 +1031,11 @@ export function deliveryFeedbackDefinition() {
           break
         }
       } catch { /* 无真人帧=下面 fail closed */ }
-      const attested = latest.match(/交付反馈\s*[:：]?\s*(accepted|needed_fix|rejected)\b/i)?.[1]
-      if (!attested) throw new Error('交付反馈缺真人证据：开发者先发「交付反馈 accepted」或「交付反馈 needed_fix/rejected」，模型不能替开发者确认结果')
+      // v0.8.18 取证协议化：信封优先；散文取全部命中并归一大小写/分隔符；含混=拒收（不猜）
+      const att = parseDeliveryAttestation(latest)
+      if (att.error) throw new Error(att.error)
+      const attested = att.result
+      if (!attested) throw new Error('交付反馈缺真人证据：开发者先发「交付反馈 accepted」或「交付反馈 needed_fix/rejected」（亦可发信封 {"closedloop":{"delivery":"accepted"}}），模型不能替开发者确认结果')
       if (attested !== requested) throw new Error(`交付反馈结果不一致：真人帧=${attested}，工具参数=${requested}——只认真人帧`)
       const taskState = buildTaskState({ sid, model: getModelFingerprint(), state: s, stack: loadStack(sid), purpose: s.cost?.purpose, assertions: s.cost?.assertions })
       const rec = recordBoundOutcome({ taskState, finalQuality: requested, postDeliveryDefect: args?.postDeliveryDefect === true, note: args?.note || '' })

@@ -120,7 +120,7 @@ function latestStateSid() {
 
 // 意图通道单一真相（v0.8.13 抽模块）：实现全在 ./intent.js——本文件只做兼容再导出，
 // 案底：同一语义曾两处实现（本文件文本扫描 + tools.js 弹窗子串匹配），修一处漏一处。
-export { scanIntent, scanIntentFull, parseIntentEnvelope, labelIntent, decideFreezeAnswer, FREEZE_OPTIONS, parseClosedloopEnvelope, parseSignEnvelope } from './intent.js'
+export { scanIntent, scanIntentFull, parseIntentEnvelope, labelIntent, decideFreezeAnswer, FREEZE_OPTIONS, parseClosedloopEnvelope, parseSignEnvelope, parseDeliveryEnvelope } from './intent.js'
 
 /** v3 审统计（面板/审计共用，纯函数）：逐动作审轮次与 pending。 */
 export function auditStat(s) {
