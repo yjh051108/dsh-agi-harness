@@ -32,6 +32,7 @@ const TARGETS = [
   // 映射纪律（实测案底）：只收**沙箱自包含**测试（不 import 插件入口 index.js——它带宿主外部依赖，
   // 在审计沙箱里必红，会把整轮审计卡在基线绿门前）。tools-v3/panel-v3/v04-wiring 均因此不入映射。
   { file: 'src/mode-state.js', tests: ['tests/mode-state-v3.test.mjs', 'tests/auto-contract.test.mjs', 'tests/discrimination.test.mjs', 'tests/judge.test.mjs'] },
+  { file: 'src/tools.js', tests: ['tests/infra-cwd.test.mjs', 'tests/delivery-attest.test.mjs', 'tests/probe-tokens.test.mjs', 'tests/user-signs.test.mjs', 'tests/judge-criteria.test.mjs', 'tests/tools-mutation-guard.test.mjs'] },
 ]
 
 const run = (args, cwd) => {

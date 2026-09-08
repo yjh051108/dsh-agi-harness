@@ -1,5 +1,18 @@
 # 更新说明
 
+## v0.3.10 — 变异审计纳保 tools.js（守护目标 5 → 6）
+
+### 变更
+- **`src/tools.js` 纳入变异审计**（最大的源文件，此前零守护）：38 个变异全部杀死（1.0）。7 条幸存变异逐条补断言杀死：
+  - `cut()` 截断边界（恰好 80 字不截断 / 81 字截断 + 省略号）——杀 `slice(0,n)` 与 `x.length` 两处变异。
+  - `measureReads` 的断言选取（无 measure 的断言不得混入）与空值契约（无测量返回 `null` 而非 `undefined`）。
+  - 工具输出契约（`output.schema.additionalProperties === false`、`render` 返回文本块）。
+  - `extractSigns` 的异步帧（`deriveMessages` 是 async——少一个 `await` 就采不到签名）。
+- 新增 `tests/tools-mutation-guard.test.mjs` 4 条；映射追加该文件（新测试不进程映射=变异会幸存，v0.3.8 踩过）。
+
+### 验证
+- 全量 **416/416**；变异审计 **38/38 杀死**、等价 7；棘轮六模块均 1.0；账本快检 `目标 6 文件 · 变异 38 · 杀死 38 · 幸存 0` 退出 0；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.9 — 交付反馈取证 + 探针 token 协议化
 
 ### 修复
