@@ -39,3 +39,30 @@ dev_inject_plugin <本仓库>/plugins/dsh-browser-panel   # 可选
 - 作用域外的会话：零注入、零接管、写闸静默（插件对该会话完全隐身）；
 - 显式 `/optimal: 任务` 命令不受作用域限制（用户主动=尊重）；
 - 未携带 preset 字段的会话按"不匹配"处理（fail-closed）。
+
+## 装配前提（实测踩坑，来自 issue #7）
+
+1. **pnpm 11 会因未声明的依赖构建脚本以非 0 退出**（`ERR_PNPM_IGNORED_BUILDS`）——`dsh plugin` 只在 pnpm 退出码 0 时才做 `dsh.profile.bundles` 对账，表现为「依赖装了、插件没进 bundles、也没生效」。在 profile 的 `pnpm-workspace.yaml` 显式声明：
+
+   ```yaml
+   allowBuilds:
+     onnxruntime-node: false
+     protobufjs: false
+     sharp: false
+   ```
+
+2. **路径不要含空格**：`dsh plugin` 转发 pnpm 时用 `spawnSync("pnpm", args, { shell: true })`，含空格路径会被 cmd 拆参数。用无空格 junction 指向仓库目录。
+
+3. **依赖由谁提供**：方式 B（bundle 装配 / `dsh plugin add <本地目录>`，link 模式）**不安装插件自身的 `dependencies`**。`dsh-browser-panel` 的 `playwright-core` / `ws` / `schemastery` 必须能由宿主 profile 解析到，否则报 `Cannot find package 'playwright-core'`。
+
+4. **预设默认**（可选）：方式 B 若要开箱即用闭环，需自行设 `agent-presets.default = closedloop-full`——给出的命令里不含这一步。
+
+## 已测版本矩阵
+
+| DSH | 入口 | 结果 |
+|---|---|---|
+| `0.1.2-rc.1` | `dsh web` | 三插件 active；`/browser-panel` 路由 200、未知路径 404 |
+| `0.1.2-rc.1` | DSH Desktop 2.0.5 | 三插件 active（`webServer` 服务名一致） |
+| `0.1.3-alpha.2` | 源码启动 `pnpm dsh --profile web` | 三插件 active |
+
+HTTP 服务名基线：`@deepseek-ai/dsh-host-webserver` 发布的服务是 **`webServer`**（`0.1.0-rc.8` / `0.1.1-rc.2` / `0.1.2-rc.1` / `0.1.3-alpha.2` 一致；`httpServer` 从未被任何官方包提供）。

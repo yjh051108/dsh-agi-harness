@@ -33,6 +33,10 @@
 - Node.js >= 22
 - 语义裁判可选：提供 `DEEPSEEK_API_KEY`（缺省时自动降级为引擎判定，功能不回退）
 
+**已测 DSH 版本**：`0.1.2-rc.1`（`dsh web` + DSH Desktop 2.0.5）、`0.1.3-alpha.2`（源码启动）。
+服务名基线：HTTP 服务由 `@deepseek-ai/dsh-host-webserver` 提供，名称为 **`webServer`**（`httpServer` 从未存在过，0.1.0-rc.8 起各版本一致）。
+装配前提（pnpm 11 / 含空格路径 / 依赖由谁提供）见 [docs/INSTALL.md](docs/INSTALL.md)。
+
 ## 安装
 
 见 [docs/INSTALL.md](docs/INSTALL.md)。
@@ -43,7 +47,11 @@
 cd plugins/dsh-closedloop-mode && node --test tests/
 ```
 
-## 更新说明\n\n见 [CHANGELOG.md](CHANGELOG.md)。\n\n## 许可
+## 更新说明
+
+见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 许可
 
 Apache-2.0（见 LICENSE，全文 verbatim）。
 
