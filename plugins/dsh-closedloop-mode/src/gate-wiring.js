@@ -41,10 +41,13 @@ export function onRollback() {
 export function onTerminalZero({ s, stack, frictionSummary, sid }) {
   safeRecord('progress', true)
   try {
+    const missCount = ((stack && stack.steps) || []).filter((x) => x && Array.isArray(x.discrepancies) && x.discrepancies.length).length
     recordQuality({
       sid,
       purpose: s?.cost?.purpose,
       assertions: s?.cost?.assertions,
+      groups: s?.groups,
+      writeSet: s?.writeSet,
       rerolls: (stack?.rolledBack || []).length,
       rerollLayers: (stack?.rolledBack || []).reduce((acc, r) => {
         const layer = r.layer || 'reasoning'
@@ -56,6 +59,8 @@ export function onTerminalZero({ s, stack, frictionSummary, sid }) {
       tokenCost: 0,
       frictionCount: frictionSummary?.total || 0,
       zTimeline: [],
+      zeroed: true,
+      missCount,
       // 终验只是系统自检；真实 accepted 只能由 delivery_feedback 的真人帧写入。
       finalQuality: 'self_checked',
     })
@@ -63,7 +68,7 @@ export function onTerminalZero({ s, stack, frictionSummary, sid }) {
     // 已有 declare/probe 选择则不覆盖；只有终端候选被实际执行时才作为兜底绑定。
     bindActualAction({ taskState, actionKind: 'terminal', actionTitle: 'terminal_check' })
     // 无实际候选绑定时不写学习结果，避免把终验广播给仅被展示过的候选。
-    recordBoundOutcome({ taskState, finalQuality: 'self_checked', rerolls: (stack?.rolledBack || []).length })
+    recordBoundOutcome({ taskState, finalQuality: 'self_checked', rerolls: (stack?.rolledBack || []).length, zeroed: true, missCount })
   } catch { /* 质量记录失败不影响归零 */ }
 }
 

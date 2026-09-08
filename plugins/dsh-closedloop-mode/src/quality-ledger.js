@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { bucketKey, featuresOf, processLabel } from './learn-key.js'
 
 const storeDir = () => join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'gate-weights')
 const ledgerFile = () => join(storeDir(), 'quality-ledger.jsonl')
@@ -35,14 +36,21 @@ export function taskSignature(purpose, assertions) {
   return createHash('sha256').update(norm + '::' + structure).digest('hex').slice(0, 12)
 }
 
-/** 记录一单的质量数据 */
-export function recordQuality({ sid, purpose, assertions, rerolls, rerollLayers, predictionBias, humanInterventions, tokenCost, frictionCount, zTimeline, finalQuality }) {
+/** 记录一单的质量数据。
+ *  v0.8.35：新增 bucket/features/process 三字段——sig 是「这一单」的指纹（83/83 唯一，无法聚合），
+ *  bucket 是「这一类」的结构粗桶（跨会话可攒样本）；process 是机械过程标签（非人签）。 */
+export function recordQuality({ sid, purpose, assertions, groups, writeSet, rerolls, rerollLayers, predictionBias, humanInterventions, tokenCost, frictionCount, zTimeline, finalQuality, zeroed, missCount, process }) {
   ensureDir()
   const sig = taskSignature(purpose, assertions)
+  const feats = featuresOf({ assertions, groups, writeSet })
+  const bucket = bucketKey({ assertions, groups, writeSet })
   const rec = {
     at: new Date().toISOString(),
     sid,
     sig,
+    bucket,
+    features: feats,
+    process: process || processLabel({ zeroed: zeroed === true, rerolls, missCount }),
     rerolls: rerolls || 0,
     rerollLayers: rerollLayers || {},
     predictionBias: predictionBias || [],
@@ -56,9 +64,12 @@ export function recordQuality({ sid, purpose, assertions, rerolls, rerollLayers,
   return rec
 }
 
-/** 查询同签名趋势：最近 N 单 vs 之前 N 单 */
-export function qualityTrend(purpose, assertions, windowSize = 5) {
+/** 查询同类趋势：最近 N 单 vs 之前 N 单。
+ *  v0.8.35：样本键从 sig 换成粗桶（旧记录无 bucket 时按 sig 回退——不炸历史账）。
+ *  @param {object} [opts] {groups, writeSet} 参与粗桶的结构特征 */
+export function qualityTrend(purpose, assertions, windowSize = 5, opts = {}) {
   const sig = taskSignature(purpose, assertions)
+  const bucket = bucketKey({ assertions, groups: opts.groups, writeSet: opts.writeSet })
   if (!existsSync(ledgerFile())) return null
 
   const records = []
@@ -67,7 +78,7 @@ export function qualityTrend(purpose, assertions, windowSize = 5) {
       if (!line.trim()) continue
       try {
         const r = JSON.parse(line)
-        if (r.sig === sig) records.push(r)
+        if (r.bucket ? r.bucket === bucket : r.sig === sig) records.push(r)
       } catch { /* 坏行跳过 */ }
     }
   } catch { return null }
@@ -78,7 +89,7 @@ export function qualityTrend(purpose, assertions, windowSize = 5) {
   const previous = records.slice(-windowSize * 2, -windowSize)
 
   if (previous.length === 0) {
-    return { sig, total: records.length, recent: aggregate(recent), previous: null, trend: 'insufficient-data' }
+    return { sig, bucket, total: records.length, recent: aggregate(recent), previous: null, trend: 'insufficient-data' }
   }
 
   const rAvg = aggregate(recent)
@@ -90,7 +101,7 @@ export function qualityTrend(purpose, assertions, windowSize = 5) {
     friction: pAvg.friction > 0 ? ((rAvg.friction - pAvg.friction) / pAvg.friction * 100).toFixed(0) + '%' : 'n/a',
   }
 
-  return { sig, total: records.length, recent: rAvg, previous: pAvg, changes, trend: changes.rerolls.startsWith('-') ? 'improving' : 'degrading' }
+  return { sig, bucket, total: records.length, recent: rAvg, previous: pAvg, changes, trend: changes.rerolls.startsWith('-') ? 'improving' : 'degrading' }
 }
 
 function aggregate(records) {
