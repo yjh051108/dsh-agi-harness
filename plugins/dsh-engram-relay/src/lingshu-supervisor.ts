@@ -138,10 +138,22 @@ export class LingshuSupervisor {
 
   /** 尝试拉起灵枢服务（spawn watchdog 脚本 + 轮询就绪）。 */
   private async tryStart(): Promise<void> {
+    // 案底 issue #1（JJLLKKDD）：spawn 找不到可执行文件触发的是 ChildProcess 异步 'error' 事件，
+    // try/catch 接不住；无监听 → Unhandled 'error' → 杀死整个宿主进程。必须挂 on('error') 入盒。
+    const spawnFail = { err: null }
     const doSpawn = this.opts.spawnFn ?? ((cmd: string, args: string[], o: SpawnOptions): SpawnHandle => {
       const child = spawn(cmd, args, o)
+      child.on('error', (err) => { spawnFail.err = err })
       return { pid: child.pid, kill: (sig) => child.kill(sig) }
     })
+    // 脚本缺失（快照不含 python 运行集）：直接跳过并降级，不 spawn
+    if (!existsSync(this.script)) {
+      this.weSpawned = false
+      this.lastHealth = false
+      this.lastHealthAt = Date.now()
+      this.log('灵枢脚本不存在——降级为纯算法模式；如需语义服务请配置 pythonPath 与灵枢运行集')
+      return
+    }
     try {
       const handle = doSpawn(this.opts.pythonPath, [this.script, this.port], {
         stdio: 'ignore',
@@ -154,6 +166,7 @@ export class LingshuSupervisor {
       const deadline = Date.now() + this.readyTimeoutMs
       while (Date.now() < deadline) {
         await sleep(300)
+        if (spawnFail.err) throw spawnFail.err
         if (await this.health()) {
           this.lastHealth = true
           this.lastHealthAt = Date.now()
@@ -169,7 +182,9 @@ export class LingshuSupervisor {
       this.weSpawned = false
       this.lastHealth = false
       this.lastHealthAt = Date.now()
-      this.log(`灵枢服务自动拉起失败: ${String(e).slice(0, 120)}`)
+      const code = String(e && e.code || '')
+      const hint = code.includes('ENOENT') && this.opts.pythonPath === 'python' ? '（Linux/macOS 请把 pythonPath 配为 python3）' : ''
+      this.log(`灵枢服务自动拉起失败: ${String(e).slice(0, 120)}${hint}`)
     }
   }
 
@@ -212,3 +227,5 @@ export class LingshuSupervisor {
     }
   }
 }
+
+

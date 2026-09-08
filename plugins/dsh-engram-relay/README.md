@@ -120,3 +120,14 @@ npm run verify    # 运行自检：服务健康（未运行自动拉起）+ 卡�
 ## 许可证
 
 BSD-3-Clause（工程代码）。协议概念（智能论/信息差）权利归协议方。
+## 运行模式（快照说明）
+
+本仓库快照为**纯算法模式**：`lingshu/` 只含知识库种子数据，**不含灵枢 Python 运行集（无任何 .py）**，
+`lingshuVerifyUrl` 指向的语义服务默认不会启动，插件自动降级为本地算法检索（零报错、零崩溃）。
+
+需要语义校准时：
+
+1. 取得灵枢 AEIS 运行集（上游 [CommonTrustProtocol](https://github.com/FuRongJun-1999/CommonTrustProtocol)）；
+2. 将其 `start_lingshu.py` 放入 `lingshu/`；
+3. 配置 `pythonPath`（Linux/macOS 通常是 `python3`——**默认值 `python` 在无该命令的机器上只会打印降级日志，不会影响宿主**）；
+4. 重启 DSH；插件会在 `autoStart` 下尝试拉起并自愈。
