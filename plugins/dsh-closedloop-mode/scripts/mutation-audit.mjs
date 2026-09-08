@@ -38,6 +38,7 @@ const TARGETS = [
   { file: 'src/run-cmd.js', tests: ['tests/run-cmd.test.mjs', 'tests/run-cmd-tokenize.test.mjs'] },
   { file: 'src/rank-organ.js', tests: ['tests/rank.test.mjs', 'tests/rank-guide.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
   { file: 'src/pricing-organ.js', tests: ['tests/pricing.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
+  { file: 'src/intervene.js', tests: ['tests/intervene-metric.test.mjs'] },
 ]
 
 const run = (args, cwd) => {

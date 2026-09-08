@@ -1,5 +1,23 @@
 # 更新说明
 
+## v0.3.18 — 在岗介入率（介入率口径修正）
+
+### 修复
+- **旧口径高估约 3 倍**：`measure-intervene` 原本只算「24h 窗口内真人帧数 ÷ 24h 窗口内闭合步数」——**不判断该帧是否落在某个未闭合步的窗口内**，于是设计讨论、闲聊、环还没开时的对话全被算成「介入」。实测本会话 114 真人帧中只有 38 帧落在「声明→闭合/下一步」窗口内。
+- 口径本身还**对窗口极敏感**：同一份数据，19 小时前报 2.58、刚才报 0.96——分子是滑动窗口、分母是跨会话闭合步，读数随会话混排漂移。
+
+### 新增
+- **`src/intervene.js`（纯函数，单一真相）**：`classifyFrameSource`（goal/plugin/agent-instructions 一律不算人）、`workWindows`（声明→闭合；无闭合记录=到下一步声明）、`interveneMetrics`（双口径 + 24h 切片）。
+- **`scripts/measure-intervene.mjs`**：IO 层，产出 `intervene-report.json` —— **旧字段全保留**（面板消费不断），新增 `onDutyRate24h` / `onDutyHumans24h` / `onDutyOverallRate` 与 `caveat`（写明旧基线 1.76 与新口径不可比）。
+- 本地 `harness-master-design/measure-intervene.mjs` 改为薄委托（逻辑零拷贝）；symbiote 面板同时显示两口径。
+
+### 首次实测（本机）
+- 旧口径 24h **0.96** 人/闭合（真人115÷闭合120）｜在岗介入率 24h **0.57**（在岗帧68÷闭合120）
+- 本会话：闭63 真人115（在岗42）→ 旧 1.83 / 新 **0.67**；全史新口径 0.77
+
+### 验证
+- 新增 `intervene-metric.test.mjs` 6 条；`src/intervene.js` 纳入变异审计（守护目标 10 → 11，73/73 杀死）；全量 **457/457**；棘轮十一模块 1.0。
+
 ## v0.3.17 — vExpect 推导化（消除「猜档位」摩擦）
 
 ### 变更
