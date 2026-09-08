@@ -29,6 +29,15 @@ export function savePricing(dir, p) {
   try { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'pricing.json'), JSON.stringify(p), 'utf8'); return true } catch { return false }
 }
 
+/** 返工计数判定（v0.8.24 协议化）：结构化 cause 优先——只有 model 才算返工；external/process-death/
+ *  deliberate 一律不喂定价账。无 cause 的旧账本回退旧正则口径（关键词命中即排除）。 */
+export function countsTowardRework(r) {
+  const c = r && r.cause
+  if (c) return c === 'model'
+  const txt = String((r && r.reason) || '')
+  return !/process-death|external|外部|用户/i.test(txt) && !/E2E|e2e|虚报|验证闸|验闸|复测|活卡|测闸/.test(txt)
+}
+
 /** 会话观测（从盘档 s+stack 纯算，归位本模块——定价判定不住接线层，p6 红线架构正解）。
  *  dV=Σ正降幅+首闭相对 V₀=1；dt=步最早 at→now；rework=窗口内非外部 rolledBack×中位步时距（v1 近似，真值待慢 EMA 自校）；
  *  fragRed=V 序列回升（回归红信号）。tok 腿=批算盲区显式返回 null（E1 帧解路径，不进热路径）。*/
@@ -48,7 +57,7 @@ export function observeSession(s, stack, now = Date.now()) {
   const rb = (stack && stack.rolledBack) || []
   // 校准 1b：故意验闸的回炉（E2E/虚报/验证/复测/活卡字样在归因里）不喂定价账——那是闸的考卷不是工作的失败；案底本身留在 rolledBack 不动
   const DELIBERATE = /E2E|e2e|虚报|验证闸|验闸|复测|活卡|测闸/
-  const rbWin = rb.filter((x) => x && typeof x.at === 'number' && x.at > t0 && !/process-death|external|外部|用户/i.test(String(x.reason || '')) && !DELIBERATE.test(String(x.reason || '')) && (!x.title || titles.has(x.title)))
+  const rbWin = rb.filter((x) => x && typeof x.at === 'number' && x.at > t0 && countsTowardRework(x) && (!x.title || titles.has(x.title)))
   const js = closed.map((c) => c.J && c.J.dtMin).filter((x) => typeof x === 'number').sort((a, b) => a - b)
   const medJ = js.length ? js[Math.floor(js.length / 2)] : 5
   const reworkMin = rbWin.length * medJ

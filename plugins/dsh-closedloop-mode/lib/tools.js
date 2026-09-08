@@ -913,14 +913,14 @@ export function auditRecordDefinition(name = 'audit_record') {
 export function optimalRollbackDefinition() {
   return {
     name: 'optimal_rollback',
-    description: '【闭环·回滚】撤销栈顶（open/invalidated；closed=锚点不可撤）。reason=重推 产物（哪个推导错了）；同签名重 declare 直拒（既定规则 局部式——引擎位）。',
-    parameters: { type: 'object', additionalProperties: false, required: ['reason'], properties: { reason: { type: 'string', description: '≥8 字：错在哪层（预测来源/权重/状态定义/偏差策略）' } } },
+    description: '【闭环·回滚】撤销栈顶（open/invalidated；closed=锚点不可撤）。reason=重推 产物（哪个推导错了）；cause=结构化归因（model=推理/措辞错·计入信誉与返工；external=外部变更；process-death=进程被杀；deliberate=故意验闸——后三者不计）；同签名重 declare 直拒（既定规则 局部式——引擎位）。',
+    parameters: { type: 'object', additionalProperties: false, required: ['reason'], properties: { reason: { type: 'string', description: '≥8 字：错在哪层（预测来源/权重/状态定义/偏差策略）' }, cause: { type: 'string', enum: ['model', 'external', 'process-death', 'deliberate'], description: '结构化归因（缺省=model，计入）。别再靠 reason 里写「外部」二字让下游正则识别' } } },
     output: OUT,
     async execute(args, exec) {
       const sid = sidOf(exec)
       const reason = String(args?.reason || '').trim()
       if (reason.length < 8) throw new Error('rollback 需要 reason ≥8 字（可审计——看不出为何撤=白滚）')
-      const r = rollbackStep(sid, reason)
+      const r = rollbackStep(sid, reason, args?.cause)
       if (!r.ok) throw new Error(r.error)
       onRollback()
       return { ok: true, text: `↩️「${r.step.title}」已撤（原=${r.step.status}）。重 declare 须带新模型签名（来源/权重/不变式至少一易）。` }

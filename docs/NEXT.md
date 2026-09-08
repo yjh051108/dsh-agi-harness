@@ -39,7 +39,7 @@
 
 ## P1 · 测量覆盖扩面（当前 6/36 文件）
 
-**依据**：`scripts/mutation-audit.mjs` 的 `TARGETS` 现为 `write-gate / scope / optimal-engine / intent / mode-state / tools`。下一批候选：`gate-core.js`、`run-cmd.js`（两者已有自包含测试，接入成本低）、`audit-dispatch.js`、`judge.js`。
+**依据**：`scripts/mutation-audit.mjs` 的 `TARGETS` 现为 `write-gate / scope / optimal-engine / intent / mode-state / tools / gate-core / run-cmd`。下一批候选：`rank-organ.js`、`pricing-organ.js`（本轮新逻辑 `isExternalRollback`/`countsTowardRework` 已自包含可测）、`audit-dispatch.js`、`judge.js`。
 
 **做法**：加目标 → 跑审计 → 幸存变异逐条处置（补断言或入 `equivalents.json` 带机械理由）。**映射只收沙箱自包含测试**（不 import 插件入口 `index.js`）。
 
@@ -65,4 +65,4 @@
 
 ## 已闭合（避免重复劳动）
 
-- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js`/`mode-state.js`/`tools.js` 纳保变异审计 · 棘轮等价变异不计分母 · 回炉分层协议化（`discrepancyCodes`）· 真人签收通道协议化（信封 + token 规范化）· 交付反馈取证归一/含混拒收/信封 · 探针 token 符号位与指数 · YAML 标量解析（引号/注释/内联流映射）· argv 单遍分词器。
+- `agreedPairs` 结构化对账（零正则）· `valueEq` 数值等价层 · 意图 JSON 信封 + 否定感知 · 意图单一真相模块 + 弹窗决策结构化 · 判据 cwd/超时运行时修复 · `intent.js`/`mode-state.js`/`tools.js`/`gate-core.js`/`run-cmd.js` 纳保变异审计 · 棘轮等价变异不计分母 · 回炉分层协议化（`discrepancyCodes`）· 回炉归因结构化（`cause` 枚举）· 真人签收通道协议化（信封 + token 规范化）· 交付反馈取证归一/含混拒收/信封 · 探针 token 符号位与指数 · YAML 标量解析（引号/注释/内联流映射）· argv 单遍分词器 · 变异归因结构化（`killedBy`/`attribution`）· 弱断言扫描器（报告口径）。

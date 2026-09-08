@@ -425,6 +425,16 @@ export function channelIdentity(c) {
   return { via, ref }
 }
 
+/** 探针键查找（v0.8.24 大小写不敏感）：channelIdentity 把 ref 归一为小写，而 probe_record 的 key
+ *  允许 [A-Za-z0-9_-]（可含大写）——旧实现 hasOwnProperty(probes, ref) 对大写键必失败，evidenced 假阴性。 */
+export function probeKeyFor(probes, ref) {
+  const r = String(ref || '').trim().toLowerCase()
+  if (!r || !probes || typeof probes !== 'object') return ''
+  if (Object.prototype.hasOwnProperty.call(probes, r)) return r
+  for (const k of Object.keys(probes)) if (k.toLowerCase() === r) return k
+  return ''
+}
+
 export function convergeStep(sid, args) {
   const s = loadStack(sid)
   const cur = stackTop(s)
@@ -499,7 +509,7 @@ export function convergeStep(sid, args) {
     let chanEvidenced = false
     try {
       const probes = loadProbes(sid)
-      chanEvidenced = ids.some((i) => Object.prototype.hasOwnProperty.call(probes, i.ref) || /[\\/]/.test(i.ref) || /\b(node|npm|git|pwsh|findstr|python)\b/.test(i.ref) || i.ref.endsWith('.mjs') || i.ref.endsWith('.js'))
+      chanEvidenced = ids.some((i) => probeKeyFor(probes, i.ref) !== '' || /[\\/]/.test(i.ref) || /\b(node|npm|git|pwsh|findstr|python)\b/.test(i.ref) || i.ref.endsWith('.mjs') || i.ref.endsWith('.js'))
     } catch { chanEvidenced = false }
     // r60 事故#2 修复（band 闸）：at="已测投影全绿"不是口头承诺——引擎以 tools 注入的实测 V 为权威，V>0 拒收 at
     if (dv.measuredBand === 'at' && Number.isFinite(Number(args?.ticketV)) && Number(args.ticketV) > 0) return { ok: false, error: `band 闸：报 at 被拒——V=${args.ticketV}>0（引擎实时测得：已测投影仍有红/读数失败，合同未达）。诚实报 near，清零的那一步再宣 at（案底 r60：引擎不校 at⇒V=0 收了谎，下一步被 maintainGate 反杀整票卡死）。` }
@@ -555,18 +565,25 @@ export function classifyRollbackLayer(diffs, codes) {
   return anyReal ? 'reasoning' : anyFormat ? 'transcription' : 'reasoning'
 }
 
-export function rollbackStep(sid, reason) {
+/** 回炉归因（v0.8.24 结构化）：决定这次回炉算不算「模型的判断失误」。
+ *  model=推理/措辞错（计）；external=外部变更；process-death=进程被杀；deliberate=故意验闸（不计）。 */
+export const ROLLBACK_CAUSES = ['model', 'external', 'process-death', 'deliberate']
+const CAUSE_SET = new Set(ROLLBACK_CAUSES)
+
+export function rollbackStep(sid, reason, cause) {
   const s = loadStack(sid)
   const cur = stackTop(s)
   if (!cur) return { ok: false, error: '空栈——无可回滚' }
   if (cur.status === 'closed') return { ok: false, error: `步${cur.n}「${cur.title}」已闭合（账面锚点）不可撤销` }
   const removed = s.steps.pop()
   removed.rollbackReason = String(reason || '').trim() || '（未记录）'
+  // v0.8.24：cause 枚举外的值一律归 model（默认计入——宁可算在模型头上，不靠措辞洗白）
+  removed.rollbackCause = CAUSE_SET.has(String(cause || '')) ? String(cause) : 'model'
   // v0.6.35 回炉机械分层（治本：措辞层不计信誉——惩罚对准判断力非打字准确率，模型无法自报洗白）：
   // v0.8.16 按 discrepancyCodes 判（文案无关）；无码存量栈回退旧正则口径。
   removed.rollbackLayer = classifyRollbackLayer(removed.discrepancies || [], removed.discrepancyCodes)
   s.rolledBack = s.rolledBack || []
-  s.rolledBack.push({ n: removed.n, title: removed.title, reason: removed.rollbackReason, layer: removed.rollbackLayer, signature: removed.signature, diffs: removed.discrepancies || [], codes: removed.discrepancyCodes || [], at: Date.now() })
+  s.rolledBack.push({ n: removed.n, title: removed.title, reason: removed.rollbackReason, cause: removed.rollbackCause, layer: removed.rollbackLayer, signature: removed.signature, diffs: removed.discrepancies || [], codes: removed.discrepancyCodes || [], at: Date.now() })
   saveStack(sid, s)
   return { ok: true, step: removed }
 }

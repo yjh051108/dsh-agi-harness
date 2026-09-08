@@ -1,5 +1,17 @@
 # 更新说明
 
+## v0.3.15 — 回炉归因结构化（cause）
+
+### 变更
+- **`optimal_rollback` 新增 `cause` 枚举**（`model` / `external` / `process-death` / `deliberate`，缺省 `model`）。此前「这次回炉算不算模型的判断失误」是靠**正则反解模型自己写的 reason 自由文本**（`rank-organ` 的 `/external|外部|用户改口|process-death|off/i`、`pricing-organ` 的 `/process-death|external|外部|用户/i` + `DELIBERATE`）——措辞一变判定就翻。现下游优先看结构化 `cause`：`rank` 只排除 `external`/`process-death`，`pricing` 只把 `model` 计入返工。
+- **枚举外的值一律归 `model`**（默认计入——宁可算在模型头上，不靠措辞洗白）；`rolledBack` 条目落 `cause` 可审计。
+- **存量兼容**：无 `cause` 的旧账本仍走原正则口径，判定不变。
+- **探针键大小写修复**：`channelIdentity` 把 ref 归一为小写，而 `probe_record` 的 key 允许大写字母——旧实现 `hasOwnProperty(probes, ref)` 对 `MyProbe` 这类键必失败，导致 `dv.evidenced` 假阴性。新增 `probeKeyFor` 大小写不敏感查找。
+
+### 验证
+- 新增 `rollback-cause.test.mjs` 5 条（结构化落账/枚举外归 model/rank 结构化优先 + 旧账本兼容/定价只计 model/探针键大小写）。
+- 全量 **441/441**；变异审计 50/50 杀死、等价 8；棘轮八模块 1.0；账本快检退出 0；弱断言报告 175 条断言 6 条弱；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.14 — 弱断言扫描器（弱杀检测的第一块地基）
 
 ### 新增

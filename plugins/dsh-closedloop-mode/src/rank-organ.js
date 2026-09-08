@@ -13,6 +13,14 @@ import { readLessons } from './learning-organ.js'
 const SEV_W = { catastrophic: 4, major: 2, minor: 1 }
 const EXTERNAL = /external|外部|用户改口|process-death|off/i
 
+/** 外部回炉判定（v0.8.24 协议化）：优先看结构化 cause（external/process-death），无 cause 的旧账本
+ *  回退旧正则口径——不再靠模型自由文本里的关键词决定「算不算进信誉分母」。 */
+export function isExternalRollback(r) {
+  const c = r && r.cause
+  if (c) return c === 'external' || c === 'process-death'
+  return EXTERNAL.test(String((r && (r.reason || r.raw)) || ''))
+}
+
 export function wilsonLB(k, n) {
   if (!n) return 0
   const p = k / n, z = 1.96, z2 = z * z
@@ -22,7 +30,7 @@ export function wilsonLB(k, n) {
 export function computeC(s, stack) {
   const closed = (s && s.closed) || []
   const rbAll = (stack && Array.isArray(stack.rolledBack)) ? stack.rolledBack : []
-  const rb = rbAll.filter((r) => !EXTERNAL.test(String(r && (r.reason || r.raw) || '')))
+  const rb = rbAll.filter((r) => !isExternalRollback(r))
   // v0.6.35 治本：措辞层回炉（transcription）不计信誉分母——惩罚对准判断力；计 slips 轻账公示
   const rbReasoning = rb.filter((r) => r.layer !== 'transcription')
   const slips = rb.length - rbReasoning.length
