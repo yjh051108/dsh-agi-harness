@@ -117,14 +117,71 @@ function latestStateSid() {
   } catch { return null }
 }
 
+const INTENT_ENUM = new Set(['approve', 'reject'])
+/** JSON 意图信封（v0.8.13 意图通道协议化）：正文含 ```json {"closedloop":{"intent":"approve"}} ```
+ *  或裸对象 {"closedloop":"reject"} → 命中即以信封为准（只做 JSON.parse + 定界符切分，不对散文做词法猜测）。
+ *  返回 { intent, invalid }：invalid=true=**看见了信封但形态非法**（非枚举值）——调用方须 fail-closed 返回
+ *  null，绝不退回散文猜测（weights 段 approve 会直接锁合同，猜错=把导演的「不要」当「要」）。 */
+export function parseIntentEnvelope(text) {
+  const t = String(text || '')
+  if (!t.includes('{')) return null
+  const blocks = []
+  const fence = /```(?:json)?\s*([\s\S]*?)```/gi
+  let m
+  while ((m = fence.exec(t))) blocks.push(m[1])
+  const i = t.indexOf('{'), j = t.lastIndexOf('}')
+  if (i >= 0 && j > i) blocks.push(t.slice(i, j + 1))
+  let sawEnvelope = false
+  for (const b of blocks) {
+    let o
+    try { o = JSON.parse(String(b).trim()) } catch { continue }
+    if (!o || typeof o !== 'object' || !('closedloop' in o)) continue
+    sawEnvelope = true
+    const c = o.closedloop
+    const raw = typeof c === 'string' ? c : (c && typeof c === 'object' && typeof c.intent === 'string' ? c.intent : null)
+    const norm = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+    if (INTENT_ENUM.has(norm)) return { intent: norm, invalid: false }
+  }
+  return sawEnvelope ? { intent: null, invalid: true } : null
+}
+
+// 散文回退（信封缺席时）：分句 + 否定感知——旧实现纯子串，「先不要确认」「别确认」「not ok」都含 approve
+// 子串→误判 approve（weights 段=直接锁合同）。现按分句判定：分句内否定词先于确认词=否定式（reject）。
+const REJECT_RE = /修改|拒绝|取消|不同意|建议|改成|改为|调整为|调整|reject/i
+const APPROVE_RE = /确认|通过|同意|确定|继续|开工|开始|approve|confirm|(?<![a-z])ok(?![a-z])/i
+const NEG_RE = /不|别|勿|没|未|甭|休|\b(?:not|no|never|don'?t|doesn'?t|won'?t)\b/i
+const CLAUSE_SEP = /[，。！？；、,;!?\n\r]+|——|—|~/
+
+/** 散文分句扫描（不导出——单测走 scanIntent/scanIntentFull）。reject 优先=既有 a2 契约。 */
+function scanProse(t) {
+  const clauses = t.split(CLAUSE_SEP).map((x) => x.trim()).filter(Boolean)
+  let approved = false
+  for (const c of clauses) {
+    if (REJECT_RE.test(c)) return 'reject'
+    if (APPROVE_RE.test(c)) {
+      const ap = c.search(APPROVE_RE), ng = c.search(NEG_RE)
+      if (ng >= 0 && ng < ap) return 'reject'
+      approved = true
+    }
+  }
+  return approved ? 'approve' : null
+}
+
+/** 意图判定全量形态（v0.8.13）：信封优先（不受长度门限制）→ 散文分句扫描（>200 字不猜）。
+ *  source 溯源：json / json-invalid / too-long / text / null——scanLog 落盘可查。 */
+export function scanIntentFull(text) {
+  const t = String(text || '').trim()
+  if (!t) return { intent: null, source: null }
+  const env = parseIntentEnvelope(t)
+  if (env) return env.invalid ? { intent: null, source: 'json-invalid' } : { intent: env.intent, source: 'json' }
+  if (t.length > 200) return { intent: null, source: 'too-long' }
+  const intent = scanProse(t)
+  return { intent, source: intent ? 'text' : null }
+}
+
 /** 确认/修改意图（纯函数可测；修改优先——v0.2 语义继承）。导出供 a2 测例。 */
 export function scanIntent(text) {
-  const t = String(text || '').trim()
-  if (!t) return null
-  const wantReject = /修改|拒绝|取消|不同意|建议|改成|改为|调整为|调整|reject/i.test(t)
-  if (wantReject) return 'reject'
-  if (/确认|通过|同意|确定|继续|开工|开始|approve|confirm|ok/i.test(t)) return 'approve'
-  return null
+  return scanIntentFull(text).intent
 }
 
 /** v3 审统计（面板/审计共用，纯函数）：逐动作审轮次与 pending。 */
@@ -522,9 +579,11 @@ export function apply(ctx, config) {
           if (typeof m.content === 'string') txt2 = m.content
           else for (const x of (m?.content || [])) if (x && typeof x === 'object' && x.type === 'text') txt2 += x.text || ''
           const t = txt2.trim()
-          const intent = (!t || t.length > 200) ? null : scanIntent(t)
-          // scanLog：扫描看见了什么落盘可查（v0.3.1④——「继续」不翻转这类问题从猜测变成读账）
-          setState(sid, { ...state(sid), scanLog: { at: Date.now(), len: t.length, intent, stage: st.stage, head: t.slice(0, 24) } })
+          const full = t ? scanIntentFull(t) : { intent: null, source: null }
+          const intent = full.intent
+          // scanLog：扫描看见了什么落盘可查（v0.3.1④——「继续」不翻转这类问题从猜测变成读账；
+          // v0.8.13 补 via=意图来源：json 信封 / text 散文 / json-invalid 非法信封 / too-long 超长不猜）
+          setState(sid, { ...state(sid), scanLog: { at: Date.now(), len: t.length, intent, via: full.source, stage: st.stage, head: t.slice(0, 24) } })
           if (intent === 'reject' && st.stage !== 'final') {
             setState(sid, onWeightsUnlock(state(sid)))
             console.log('[closedloop] weights/rolling unlocked by text (a2)')

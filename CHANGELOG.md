@@ -1,5 +1,23 @@
 # 更新说明
 
+## v0.3.3 — 意图通道协议化（堵误确认漏洞）
+
+### 新增
+- **JSON 意图信封**：正文里写 ```json {"closedloop":{"intent":"approve"}} ```（或裸对象 `{"closedloop":"reject"}`）即被识别——只做 `JSON.parse` + 定界符切分，不对散文做词法猜测；信封优先于散文，且不受 200 字长度门限制。
+- **`scanIntentFull`**：返回 `{intent, source}`，`source ∈ json / json-invalid / too-long / text / null`，扫描痕迹落 `scanLog.via` 可查（意图从哪来不再靠猜）。
+
+### 修复
+- **否定式确认不再误判为 approve**：旧实现是纯子串匹配——「先不要确认」「别确认」「不用继续」「not ok」「don't confirm」都含 approve 子串，会被判成确认；weights 段的 approve 会**直接锁合同**。现按标点分句 + 否定感知（分句内否定词先于确认词 → reject），且英文词边界（`I know` 里的 `no` 不算否定）。
+- **信封形态非法 = fail-closed**：看见 `closedloop` 信封但 `intent` 不在枚举内 → 返回 null，不退回散文猜测。
+
+### 边界（设计，不是 bug）
+- 同一分句内既含「确认」又含「修改」仍按既有契约 **reject 优先**（安全方向：reject 只解锁，不锁合同）。
+- 散文回退保留——信封是可选通道，不要求人手写 JSON。
+
+### 验证
+- 新增 `intent-protocol.test.mjs` 7 条；全量 376/376；wiring 回归 17/17（a2 契约零失败）。
+- 变异审计（opsVersion=v2）杀死率 14/14 = 1.0。
+
 ## v0.3.2 — 工具 API JSON 协议化（去正则脆弱性）
 
 ### 新增
