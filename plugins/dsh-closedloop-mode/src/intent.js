@@ -16,31 +16,50 @@ export const FREEZE_OPTIONS = [
   { label: '反驳·解锁重排', intent: 'reject', description: '回标定态改权重/组结构，已闭账不丢' },
 ]
 
-/** JSON 意图信封（v0.8.13 意图通道协议化）：正文含 ```json {"closedloop":{"intent":"approve"}} ```
- *  或裸对象 {"closedloop":"reject"} → 命中即以信封为准（只做 JSON.parse + 定界符切分，不对散文做词法猜测）。
- *  返回 { intent, invalid }：invalid=true=**看见了信封但形态非法**（非枚举值）——调用方须 fail-closed 返回
- *  null，绝不退回散文猜测（weights 段 approve 会直接锁合同，猜错=把导演的「不要」当「要」）。 */
-export function parseIntentEnvelope(text) {
+/** 信封扫描**单一真相**（v0.8.17）：从正文里找出 `closedloop` 信封值（围栏块优先、裸对象兜底）。
+ *  返回 { value, saw }：saw=true=看见了 closedloop 信封（value 可能形态非法）；saw=false=没有信封。
+ *  parseIntentEnvelope / parseSignEnvelope 都走这里——围栏/括号扫描只此一份（v0.8.13 的案底：两处实现=漏洞只修一处）。 */
+export function parseClosedloopEnvelope(text) {
   const t = String(text || '')
-  if (!t.includes('{')) return null
+  if (!t.includes('{')) return { value: null, saw: false }
   const blocks = []
   const fence = /```(?:json)?\s*([\s\S]*?)```/gi
   let m
   while ((m = fence.exec(t))) blocks.push(m[1])
   const i = t.indexOf('{'), j = t.lastIndexOf('}')
   if (i >= 0 && j > i) blocks.push(t.slice(i, j + 1))
-  let sawEnvelope = false
+  let saw = false
   for (const b of blocks) {
     let o
     try { o = JSON.parse(String(b).trim()) } catch { continue }
     if (!o || typeof o !== 'object' || !('closedloop' in o)) continue
-    sawEnvelope = true
-    const c = o.closedloop
-    const raw = typeof c === 'string' ? c : (c && typeof c === 'object' && typeof c.intent === 'string' ? c.intent : null)
-    const norm = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
-    if (INTENT_ENUM.has(norm)) return { intent: norm, invalid: false }
+    saw = true
+    return { value: o.closedloop, saw }
   }
-  return sawEnvelope ? { intent: null, invalid: true } : null
+  return { value: null, saw }
+}
+
+/** JSON 意图信封（v0.8.13 意图通道协议化）：正文含 ```json {"closedloop":{"intent":"approve"}} ```
+ *  或裸对象 {"closedloop":"reject"} → 命中即以信封为准（只做 JSON.parse + 定界符切分，不对散文做词法猜测）。
+ *  返回 { intent, invalid }：invalid=true=**看见了信封但形态非法**（非枚举值）——调用方须 fail-closed 返回
+ *  null，绝不退回散文猜测（weights 段 approve 会直接锁合同，猜错=把导演的「不要」当「要」）。 */
+export function parseIntentEnvelope(text) {
+  const { value, saw } = parseClosedloopEnvelope(text)
+  if (!saw) return null
+  const raw = typeof value === 'string' ? value : (value && typeof value === 'object' && typeof value.intent === 'string' ? value.intent : null)
+  const norm = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  return INTENT_ENUM.has(norm) ? { intent: norm, invalid: false } : { intent: null, invalid: true }
+}
+
+/** JSON 签收信封（v0.8.17）：{"closedloop":{"sign":"组A"}} 或 {"closedloop":{"sign":["组A","全部"]}}。
+ *  返回签名数组（已规范化、去重、去空）；无信封=null。形态非法（sign 非字符串/字符串数组）=[]（fail-closed）。 */
+export function parseSignEnvelope(text) {
+  const { value, saw } = parseClosedloopEnvelope(text)
+  if (!saw) return null
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value.sign : null
+  const arr = typeof raw === 'string' ? [raw] : (Array.isArray(raw) ? raw : null)
+  if (!arr) return []
+  return [...new Set(arr.map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean))]
 }
 
 // 散文回退（信封缺席时）：分句 + 否定感知——旧实现纯子串，「先不要确认」「别确认」「not ok」都含 approve

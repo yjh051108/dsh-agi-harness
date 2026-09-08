@@ -24,7 +24,7 @@ import { weightsFace, distillDraft } from './propose-text.js'
 import { nearField } from './near-field.js'
 import { auditBrief, parseVerdict, recordAuditVerdict } from './audit-dispatch.js'
 import { dispatchCard } from './audit-rotation.js'
-import { decideFreezeAnswer } from './intent.js'
+import { decideFreezeAnswer, parseSignEnvelope } from './intent.js'
 import { loadSpec, commitSpec } from './v04-grader.js'
 import { zOf, parseOutput, vCompute } from './v04-core.js'
 import { computeC, rankTransition, demoteOnFake, rankLine, recoverRelaxed } from './rank-organ.js'
@@ -195,8 +195,41 @@ export function measureReads(s, runner, cwd = process.cwd()) {
 /** 组落账机械门（converge/audit_record 共用）：closeRequested 的组，全部动作在栈 closed
  *  且（verify=redteam 时）逐动作有 pass 审 → settled；全组 settled → stage=final。
  *  判定输入全是盘档/栈实测——无模型口头空间。 */
+/** 签名 token 规范化（v0.8.17）：剥掉包裹的标点/括号/引号，只留组名本体。
+ *  旧实现直接取 `签收\s*([^\s，。,.]+)`——「签收：组A」拿到「：组A」、「签收「组A」」拿到「「组A」」，
+ *  与组名逐字比对必然不中 = 真人签了字但门不开（假阴性，硬门误拦）。 */
+export function normalizeSignToken(tok) {
+  let s = String(tok || '').trim()
+  const pairs = [['「', '」'], ['『', '』'], ['【', '】'], ['[', ']'], ['（', '）'], ['(', ')'], ['“', '”'], ['"', '"'], ["'", "'"]]
+  for (let guard = 0; guard < 4; guard++) {
+    let changed = false
+    for (const [a, b] of pairs) {
+      if (s.length > a.length + b.length - 1 && s.startsWith(a) && s.endsWith(b)) { s = s.slice(a.length, s.length - b.length).trim(); changed = true }
+    }
+    if (!changed) break
+  }
+  return s.replace(/^[:：·、\-—]+/, '').replace(/[:：·、\-—]+$/, '').trim()
+}
+
+/** 签收提取（v0.8.17 协议化）：① JSON 信封（{"closedloop":{"sign":"组A"}}，零散文猜测）
+ *  ② 散文回退「签收 <组名>」——支持裸 token 与包裹形态（「组A」/（组A）/：组A），组名含空格须用括号。
+ *  只解析文本，不做帧判类（帧判类在 collectUserSigns）。 */
+export function extractSignsFromText(txt) {
+  const t = String(txt || '')
+  const env = parseSignEnvelope(t)
+  if (env !== null) return env
+  const out = []
+  const re = /签收[\s·、:：\-—]*(?:[「『【[(（"']([^」』】\])）"'\n]+)[」』】\])）"']?|([^\s，。,.；;、\n]+))/g
+  let m
+  while ((m = re.exec(t))) {
+    const tok = normalizeSignToken(m[1] ?? m[2] ?? '')
+    if (tok) out.push(tok)
+  }
+  return out
+}
+
 /** 真人签收提取（r64 user 硬签收门）：只认转录帧 role=user 且 source.kind==='user'（带 rpcId 的客户端直连——介入率同款判类器），
- *  模型自写"用户已确认"在此撞墙。签名语法：「签收 <组名>」逐组；「签收全部」通配。帧不可得=空集（fail-closed，缺证据=未签收）。 */
+ *  模型自写"用户已确认"在此撞墙。签名语法：「签收 <组名>」逐组（v0.8.17 起支持信封与包裹形态）；「签收全部」通配。帧不可得=空集（fail-closed，缺证据=未签收）。 */
 export function collectUserSigns(messages) {
   const set = new Set()
   try {
@@ -204,7 +237,7 @@ export function collectUserSigns(messages) {
       if (!m || m.role !== 'user') continue
       if (m.source && m.source.kind !== 'user') continue
       const txt = typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map((c) => c && c.text || '').join(' ') : ''
-      for (const g of String(txt).matchAll(/签收\s*([^\s，。,.]+)/g)) set.add(g[1])
+      for (const g of extractSignsFromText(txt)) set.add(g)
     }
   } catch { }
   return set

@@ -1,5 +1,18 @@
 # 更新说明
 
+## v0.3.8 — 真人签收通道协议化（信封 + token 规范化）
+
+### 新增
+- **签收 JSON 信封**：`{"closedloop":{"sign":"组A"}}` 或 `{"closedloop":{"sign":["组A","全部"]}}`——与意图信封同一套扫描（`parseClosedloopEnvelope` 单一真相），零散文猜测。形态非法（`sign` 非字符串/字符串数组）= fail-closed（不退回散文猜）。
+
+### 修复
+- **包裹形态的假阴性**：旧实现 `签收\s*([^\s，。,.]+)` 不排除全角冒号/书名号/括号——真人写「签收：组A」「签收「组A」」「签收（组A）」时取到的是带标点的 token，与组名逐字比对**必然不中**：真人签了字，`verify=user` 硬门却不开。现改为「信封优先 + 包裹/引号/冒号 token 规范化」（`normalizeSignToken`），组名含空格时用括号形态（`签收「多词 组名」`）。
+- **帧判类不放松**：仍只采 `role=user` 且 `source.kind==='user'` 的帧；plugin/assistant 帧里的「签收」一律不收（fail-closed）。
+
+### 验证
+- 新增 `user-signs.test.mjs` 6 条（含「签收：G → G」等旧假阴性实证）；`wiring` p5b 既有签收契约零改动通过。
+- 全量 403/403；变异审计 29/29 杀死（`intent.js` 映射补入 `user-signs.test.mjs`——新测试不进程映射=变异会幸存）；棘轮五模块 1.0；账本快检退出 0。
+
 ## v0.3.7 — 回炉分层协议化（discrepancyCodes）
 
 ### 变更
