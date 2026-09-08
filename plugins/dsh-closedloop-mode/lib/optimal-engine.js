@@ -300,7 +300,7 @@ export function declareStep(sid, args) {
     vExpect: ['improve', 'dip', 'maintain'].includes(args?.vExpect) ? args.vExpect : 'improve',
     dipPlan: String(args?.dipPlan || ''),
     confidence: ['high', 'medium', 'low'].includes(args?.confidence) ? args.confidence : 'medium',
-    status: 'open', agreed: [], discrepancies: [], dv: null, signature: '', at: Date.now(),
+    status: 'open', agreed: [], discrepancies: [], discrepancyCodes: [], dv: null, signature: '', at: Date.now(),
   }
   if (!step.title) return { ok: false, error: 'optimal_declare 需要 title（本块名，与盘档小类名一致——闭合即按此 mark）' }
   if (step.predictions.length === 0) return { ok: false, error: '预测值为空=未推导——至少 1 个可度量结果先算出来（禁止先实现后取值）' }
@@ -316,7 +316,7 @@ export function declareStep(sid, args) {
   // r66 准备黑洞闸门（案底 c9d6f192：开环后 99 分钟 492 次工具调用、declare 0 次，面板纹丝不动）：
   // 首步声明时以栈文件 mtime 为开环钟——超 10 分钟才开口=留痕入 step+discrepancy（不拦，记录显形；mtime 不可得宁放不误伤）
   { const firstStep = !(s.steps || []).some((x) => x && (x.status === 'open' || x.status === 'closed'))
-    if (firstStep) { try { const opened = statSync(optimalFileFor(sid)).mtimeMs; const gapMin = Math.round((Date.now() - opened) / 60000); if (gapMin >= 10) { step.prepGapMin = gapMin; step.discrepancies.push(`准备黑洞 ${gapMin}min：开环后首步迟到——环境/准备也该升格为带预测的声明步（probe_record 留痕再 declare），此条入卷不拦路`) } } catch { /* 无 mtime=不装测 */ } } }
+    if (firstStep) { try { const opened = statSync(optimalFileFor(sid)).mtimeMs; const gapMin = Math.round((Date.now() - opened) / 60000); if (gapMin >= 10) { step.prepGapMin = gapMin; step.discrepancies.push(`准备黑洞 ${gapMin}min：开环后首步迟到——环境/准备也该升格为带预测的声明步（probe_record 留痕再 declare），此条入卷不拦路`); step.discrepancyCodes.push('prep-gap') } } catch { /* 无 mtime=不装测 */ } } }
   // maintainGate（r20 立、r44 修活、r48 定界）：at 档非 maintain/dip 预期必死在 ΔV 闸——declare 预拦。
   // r43 哑火案底：undefined 判据被 merge 默认值绕过（函数对线哑）。r48 活线首拦实锤后自曝越界案：闸拿栈史尾判档，新票开板 state=far 而栈尾=上票 at——误拦真推进首步。定界=只信合同内权威 state.lastBand（args.ticketBand 传入），无则宁放不误伤（假阳性比漏拦更伤信任）。
   { const band = args?.ticketBand || null
@@ -443,6 +443,9 @@ export function convergeStep(sid, args) {
     cur.agreed = [...rendered, ...cur.agreed]
   }
   cur.discrepancies = (args?.discrepancies || []).map(String)
+  // v0.8.16 结构化码（回炉分层协议化）：每条 discrepancy 同步记码，分层不再正则反解自己生成的文案。
+  // 模型自报（discrepancies 入参）= 'declared'：它是模型自己的判断，归因保守算推理层。
+  cur.discrepancyCodes = cur.discrepancies.map(() => 'declared')
   // ① 数值闭包（v0.3.2 Bug-A 修复）：
   // 含数字预测的 agreed 必须含「≠」——否则整体拒绝（必须显式声明测量结果）
   // 数值对校验只查有 agreed 覆盖的 numerics（已声明测量结果的才核格式）
@@ -453,7 +456,7 @@ export function convergeStep(sid, args) {
       // 「中心距: 实测 22 预测 22」语义完整却被拒）。逐条按 key 抽取实测/预测并核数值。
       // 证据护栏不在此：probe: 源预测的数字必须在探针实跑 output（declare 期机械复验）、
       // 带 measure 的断言由引擎实跑得 V——与写法无关。
-      const forced = []
+      const forced = [], forcedCodes = []
       for (const p of numeric) {
         const pair = (Array.isArray(cur.agreedPairs) ? cur.agreedPairs : []).find((x) => x.key === p.key)
         let m
@@ -468,11 +471,11 @@ export function convergeStep(sid, args) {
           m = agreedMatch(item, p.key, p.value)
         }
         if (m.ok) continue
-        if (m.reason === 'no-number') forced.push(`${p.key}: 无数值实证（对账须给实测数字，且与声明值 ${p.value} 相等；空话/占位词≠测量，实测缺位=未验证）`)
-        else if (m.reason === 'declared-mismatch') forced.push(`${p.key}: 复述的预测 ${m.b} 与声明值 ${p.value} 不符（照声明核实测——改声明走 rollback 重推，别在 agreed 里换数）`)
-        else forced.push(`${p.key}: 实测 ${m.a} 与声明值 ${p.value} 不等（不等=预言失效：如实写入 discrepancies 并 rollback 重推，非 agreed）`)
+        if (m.reason === 'no-number') { forced.push(`${p.key}: 无数值实证（对账须给实测数字，且与声明值 ${p.value} 相等；空话/占位词≠测量，实测缺位=未验证）`); forcedCodes.push('no-number') }
+        else if (m.reason === 'declared-mismatch') { forced.push(`${p.key}: 复述的预测 ${m.b} 与声明值 ${p.value} 不符（照声明核实测——改声明走 rollback 重推，别在 agreed 里换数）`); forcedCodes.push('declared-mismatch') }
+        else { forced.push(`${p.key}: 实测 ${m.a} 与声明值 ${p.value} 不等（不等=预言失效：如实写入 discrepancies 并 rollback 重推，非 agreed）`); forcedCodes.push('unequal') }
       }
-      if (forced.length) cur.discrepancies = [...cur.discrepancies, ...forced]
+      if (forced.length) { cur.discrepancies = [...cur.discrepancies, ...forced]; cur.discrepancyCodes = [...(cur.discrepancyCodes || []), ...forcedCodes] }
     }
   }
   // ② ΔV 序带 + ③ 双通道
@@ -535,9 +538,17 @@ export function convergeStep(sid, args) {
 }
 
 /** optimal_rollback：撤销栈顶（open/invalidated）；closed=账面锚点不可撤。reason=重推 产物。 */
-/** v0.6.35 回炉分层纯函数（机械判定单一真相）：真不一致=推理层；格式/占位/假吻合=措辞层；混合=保守推理层。 */
-export function classifyRollbackLayer(diffs) {
+/** v0.6.35 回炉分层纯函数（机械判定单一真相）：真不一致=推理层；格式/占位/假吻合=措辞层；混合=保守推理层。
+ *  v0.8.16 协议化：优先按**结构化码**判定（codes 与 diffs 一一对应）——旧实现拿正则反解引擎自己生成的
+ *  文案，改一个词就静默翻转归因（措辞脆弱性）。码全为格式码=措辞层，任一非格式码（含模型自报 declared、
+ *  存量无码）=推理层。无码调用（存量栈/外部）仍走旧正则口径，判定不变。 */
+const DISC_FORMAT_CODES = new Set(['no-number', 'no-key', 'declared-mismatch'])
+export function classifyRollbackLayer(diffs, codes) {
   const ds = (diffs || []).map(String)
+  const cs = Array.isArray(codes) ? codes.map((x) => String(x || '')) : []
+  if (ds.length > 0 && cs.length === ds.length) {
+    return cs.some((c) => !DISC_FORMAT_CODES.has(c)) ? 'reasoning' : 'transcription'
+  }
   if (!ds.length) return 'reasoning' // 无证伪记录=保守（存量未分层，不洗白）
   const anyReal = ds.some((d) => /不一致|与声明值 .* 不等|不等（/.test(d))
   const anyFormat = ds.some((d) => /假吻合|占位词|前导数字|逐字含|no-form|无数值实证|复述的预测|同源/i.test(d))
@@ -552,10 +563,10 @@ export function rollbackStep(sid, reason) {
   const removed = s.steps.pop()
   removed.rollbackReason = String(reason || '').trim() || '（未记录）'
   // v0.6.35 回炉机械分层（治本：措辞层不计信誉——惩罚对准判断力非打字准确率，模型无法自报洗白）：
-  // 引擎从 discrepancies 判：真不一致=reasoning；格式/占位/假吻合=transcription；混合=保守 reasoning
-  removed.rollbackLayer = classifyRollbackLayer(removed.discrepancies || [])
+  // v0.8.16 按 discrepancyCodes 判（文案无关）；无码存量栈回退旧正则口径。
+  removed.rollbackLayer = classifyRollbackLayer(removed.discrepancies || [], removed.discrepancyCodes)
   s.rolledBack = s.rolledBack || []
-  s.rolledBack.push({ n: removed.n, title: removed.title, reason: removed.rollbackReason, layer: removed.rollbackLayer, signature: removed.signature, diffs: removed.discrepancies || [], at: Date.now() })
+  s.rolledBack.push({ n: removed.n, title: removed.title, reason: removed.rollbackReason, layer: removed.rollbackLayer, signature: removed.signature, diffs: removed.discrepancies || [], codes: removed.discrepancyCodes || [], at: Date.now() })
   saveStack(sid, s)
   return { ok: true, step: removed }
 }

@@ -1,5 +1,16 @@
 # 更新说明
 
+## v0.3.7 — 回炉分层协议化（discrepancyCodes）
+
+### 变更
+- **回炉归因不再正则反解自己的文案**：`classifyRollbackLayer` 原先用正则匹配 `discrepancies` 的**消息文本**（引擎自己渲染的）来判定「推理层 vs 措辞层」——改一个词就静默翻转归因。现由结构化码判定：`converge` 为每条 discrepancy 同步记码（`no-number` / `declared-mismatch` / `unequal` / `declared` / `prep-gap`），分层只看码表：**全为格式码=措辞层，任一非格式码=推理层**（含模型自报与未知码，保守）。
+- **`rolledBack` 落账带 `codes`**：回炉记录可审计到「凭什么这么分层」。
+- **存量兼容**：无码的旧栈仍走原正则口径（判定不变），既有 4 条分层测试零改动通过。
+
+### 验证
+- 新增 `rollback-layer.test.mjs` 5 条（码直判 / 端到端 unequal / 端到端 no-number / 文案无关 / 无码兼容）。
+- 全量 397/397；变异审计 29/29 杀死、7 条等价；棘轮五模块均 1.0；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.6 — 变异审计纳保 mode-state.js + 账本快检判据
 
 ### 新增
