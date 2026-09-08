@@ -140,6 +140,63 @@ export function initMode() {
   }
 }
 
+/** v0.8.30 写入面台账上限（判据可证伪门的数据源：本会话 write/edit 产出的文件） */
+export const MAX_WRITE_SET = 50
+
+/**
+ * 写入面台账（纯函数）：记录本会话 write/edit 的产物路径。
+ * 空值/重复不添键——保持 round-trip 键纪律（无写入面时不出现 writeSet 键）。
+ */
+export function recordWrite(prev, p) {
+  const s = prev || initMode()
+  const v = String(p || '').trim()
+  if (!v) return s
+  const cur = Array.isArray(s.writeSet) ? s.writeSet : []
+  if (cur.includes(v)) return s
+  return { ...s, writeSet: [...cur, v].slice(-MAX_WRITE_SET) }
+}
+
+/* ---------------- v0.8.31 欠据账（人判项=只能人判的项，真人签收才付清） ----------------
+ * 治的病（池核案底 session-1f8c4faa）：11 条断言里 7 条人判项被 terminal_check 记成
+ * 「未机械验证（挂账可审计）」，交付口径仍是「11 条断言全绿·交付完成」——而机器看不见的
+ * 恰好是决定质量的视觉/听觉/尺度项。「我测不了」被翻译成了「通过」。
+ * 语义：① 只有人判项入欠据（cmd 判据有机器读数，不入）；② 欠据不阻断推进，只阻断「完成」口径；
+ *       ③ 支付=真人帧「签收 <组名>」/「签收全部」（模型自写在此撞墙，帧判类同 r64 硬签收门）。 */
+
+/** 登记欠据（落账时调用）：同组旧的**未付**项被本次替换（重复落账不累积），已付项保留为史。 */
+export function recordIOU(prev, groupTitle, items) {
+  const s = prev || initMode()
+  const g = String(groupTitle || '').trim()
+  if (!g) return s
+  const list = (Array.isArray(items) ? items : []).map((x) => String(x || '').trim()).filter(Boolean)
+  if (list.length === 0) return s
+  const at = Date.now()
+  const kept = (Array.isArray(s.iou) ? s.iou : []).filter((e) => !(e && e.group === g && !e.paidAt))
+  return { ...s, iou: [...kept, ...list.map((text) => ({ group: g, text, at, paidAt: null }))] }
+}
+
+/** 支付欠据（真人签收帧集合：组名精确或「全部」）。无变化=返回原状态（幂等）。 */
+export function payIOU(prev, signs) {
+  const s = prev || initMode()
+  const cur = Array.isArray(s.iou) ? s.iou : []
+  if (cur.length === 0) return s
+  const set = signs instanceof Set ? signs : new Set(Array.isArray(signs) ? signs : [])
+  if (set.size === 0) return s
+  const at = Date.now()
+  let changed = false
+  const next = cur.map((e) => {
+    if (!e || e.paidAt) return e
+    if (set.has(e.group) || set.has('全部')) { changed = true; return { ...e, paidAt: at } }
+    return e
+  })
+  return changed ? { ...s, iou: next } : s
+}
+
+/** 未付欠据（终端归零的唯一新增阻塞条件）。 */
+export function openIOU(s) {
+  return (Array.isArray(s?.iou) ? s.iou : []).filter((e) => e && !e.paidAt)
+}
+
 /** 序列化：injected 转数组；输出键集即 v3 合同（零轨迹键）。 */
 export function serializeState(s) {
   return {
@@ -159,6 +216,8 @@ export function serializeState(s) {
     rank: s.rank || undefined, // v0.5.0 档位器官（LANDING：T/C/flags——信任是资产跨会话，缺位=T0）
     demands: Array.isArray(s.demands) && s.demands.length ? s.demands : undefined, // v0.5.2 索取单（跨拍续追，空=无键 round-trip 等值）
     lockedPromises: s.lockedPromises || undefined, // v0.5.12 方案A 目标锁承诺槽（自动立项：首个声明的键值承诺集）
+    writeSet: Array.isArray(s.writeSet) && s.writeSet.length ? s.writeSet : undefined, // v0.8.30 写入面台账（空=无键）
+    iou: Array.isArray(s.iou) && s.iou.length ? s.iou.map((e) => ({ group: String(e?.group || ''), text: String(e?.text || ''), at: typeof e?.at === 'number' ? e.at : null, paidAt: typeof e?.paidAt === 'number' ? e.paidAt : null })) : undefined, // v0.8.31 欠据账（空=无键）
     injected: [...(s.injected || [])],
   }
 }
@@ -192,6 +251,16 @@ export function deserializeState(obj) {
   if (obj.terminalReport) s.terminalReport = obj.terminalReport // 缺位=无键（round-trip 严格等值，不造 undefined 键）
   if (obj.rank && typeof obj.rank === 'object') s.rank = obj.rank // v0.5.0
   if (Array.isArray(obj.demands) && obj.demands.length) s.demands = obj.demands // v0.5.2 索取单（缺位/空=无键）
+  if (Array.isArray(obj.writeSet) && obj.writeSet.length) s.writeSet = obj.writeSet.map((x) => String(x)) // v0.8.30 写入面台账
+  if (Array.isArray(obj.iou) && obj.iou.length) { // v0.8.31 欠据账
+    s.iou = obj.iou.map((e) => ({
+      group: String(e?.group || ''),
+      text: String(e?.text || ''),
+      at: typeof e?.at === 'number' ? e.at : null,
+      paidAt: typeof e?.paidAt === 'number' ? e.paidAt : null,
+    })).filter((e) => e.group && e.text)
+    if (s.iou.length === 0) delete s.iou
+  }
   if (obj.scanLog && typeof obj.scanLog === 'object') s.scanLog = obj.scanLog
   if (typeof obj.reviewNote === 'string' && obj.reviewNote) s.reviewNote = obj.reviewNote
   if (obj.freezeAck && typeof obj.freezeAck === 'object') s.freezeAck = obj.freezeAck // v0.4.1-F1 补
@@ -286,7 +355,9 @@ export function controlSurface(s) {
   }
 }
 
-/** 终端归零（v3）：唯一 throw 位不变；零=全组 settled ∧ 栈无未闭步 ∧ 无可回升空间的挂账已清（底档饱和 dip 不构成未零——smoke2 #A/#B 修复口径）。 */
+/** 终端归零（v3）：唯一 throw 位不变；零=全组 settled ∧ 栈无未闭步 ∧ 无可回升空间的挂账已清（底档饱和 dip 不构成未零——smoke2 #A/#B 修复口径）。
+ *  v0.8.31 新增唯一阻塞条件：**无未付欠据**——人判项不再当"挂账"放行（池核案底：
+ *  机器看不见的 7 项被记成挂账后照样出「交付完成」）。 */
 export function terminalCheck(cost, stack, state, stage) {
   if (stage !== 'final') throw new Error(`terminalCheck 仅终端校验态（final）可执行，当前=${stage}`)
   const steps = stack?.steps || []
@@ -294,9 +365,10 @@ export function terminalCheck(cost, stack, state, stage) {
   const unsettled = (state?.groups || []).filter((g) => !g.settled).map((g) => g.title)
   const dip = (state?.dipPending === true && steps.some((x) => x.pendingDip === true && x.dv?.after !== 'at')) || steps.some((x) => x.pendingDip === true && x.status === 'closed' && x.dv?.after !== 'at')
   const closedSteps = steps.filter((x) => x.status === 'closed').length
+  const iou = openIOU(state)
   return {
-    zero: unsettled.length === 0 && openSteps.length === 0 && !dip,
-    unsettledGroups: unsettled, openSteps, dipPending: dip, closedSteps,
+    zero: unsettled.length === 0 && openSteps.length === 0 && !dip && iou.length === 0,
+    unsettledGroups: unsettled, openSteps, dipPending: dip, closedSteps, openIOU: iou,
     purpose: cost?.purpose || '',
   }
 }

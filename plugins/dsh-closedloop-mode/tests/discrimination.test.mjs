@@ -60,15 +60,16 @@ test('d5 落账门：cmd 红不落账；全绿+人判挂账注', async () => {
   const steps = [{ n: 1, title: 'T1', status: 'closed' }]
   const red = JSON.parse(JSON.stringify(base))
   red.groups = [{ title: 'G', spec: 's', accept: ['cmd:node -e "process.exit(1)"'], verify: 'self', settled: null, closeRequested: true }]
-  const rr = T.trySettleGroups(red, steps)
+  const rr = await T.trySettleGroups(red, steps)
   assert.equal(rr.state.groups[0].settled, null, 'cmd 红=不落账')
   assert.match(rr.notes.join(''), /判据红/, 'v0.6.24 三态：能跑但红=判据红（显式）')
   assert.match(rr.notes.join(''), /不落账/)
   const greenG = JSON.parse(JSON.stringify(base))
   greenG.groups = [{ title: 'G', spec: 's', accept: ['cmd:node -e "process.exit(0)"', '人判:报告已交付'], verify: 'self', settled: null, closeRequested: true }]
-  const gr = T.trySettleGroups(greenG, steps)
+  const gr = await T.trySettleGroups(greenG, steps)
   assert.ok(gr.state.groups[0].settled, '全绿落账')
-  assert.match(gr.notes.join(''), /人判挂账：报告已交付/)
+  assert.match(gr.notes.join(''), /人判欠据 1 条/, 'v0.8.31：人判项落账时登记为欠据（不再挂账放行）')
+  assert.match(gr.notes.join(''), /签收 G/, '回执必须给支付方式')
 })
 
 process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {} })

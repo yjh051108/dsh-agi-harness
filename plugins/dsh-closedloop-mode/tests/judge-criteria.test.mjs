@@ -42,20 +42,20 @@ test('j1 decompose 判据带注释（全角括号）→ 提交即拒（案底 b7
   await assert.rejects(() => r, /人判:|注释|案底/, '注释必须进 人判: 项，cmd: 只许命令本体')
 })
 
-test('j2 组落账 broken 命令（不存在模块）→ 显式「跑不了」≠判据红，组不落账', () => {
+test('j2 组落账 broken 命令（不存在模块）→ 显式「跑不了」≠判据红，组不落账', async () => {
   const s = settleState(['cmd:node D:/no-such-dir/no-such.mjs'])
-  const r = T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
+  const r = await T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
   assert.match(r.notes.join(), /跑不了/, '命令坏=跑不了（非判据红）')
   assert.doesNotMatch(r.notes.join(), /判据红/, 'broken 不冒充判据红')
   assert.match(r.notes.join(), /不落账/, '组保持未落账')
   assert.equal(r.state.groups[0].settled, null)
 })
 
-test('j3 组落账 判据红（能跑 exit≠0）→ 显式「判据红」，组不落账', () => {
+test('j3 组落账 判据红（能跑 exit≠0）→ 显式「判据红」，组不落账', async () => {
   const redMjs = path.join(TMP, 'red.mjs')
   fs.writeFileSync(redMjs, 'process.exit(3)\n', 'utf8')
   const s = settleState([`cmd:node ${redMjs}`])
-  const r = T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
+  const r = await T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
   assert.match(r.notes.join(), /判据红/, '能跑但红=判据红（与跑不了可区分）')
   assert.match(r.notes.join(), /不落账/)
   assert.equal(r.state.groups[0].settled, null)
@@ -71,9 +71,9 @@ test('j5 decompose 判据指向本步内创建的脚本：dry-run 接受并标�
   assert.match(r.text, /物料未就位/, '回执如实标注挂账')
 })
 
-test('j6 挂账判据落账时仍须实跑：目标未创建=不落账', () => {
+test('j6 挂账判据落账时仍须实跑：目标未创建=不落账', async () => {
   const s = settleState(['cmd:node scripts/no-today.mjs'])
-  const r = T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
+  const r = await T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
   assert.match(r.notes.join(), /物料未就位/)
   assert.match(r.notes.join(), /不落账/)
   assert.equal(r.state.groups[0].settled, null)
@@ -102,11 +102,11 @@ test('j8 判据对象形态非法（缺 command/text）→ 明确拒并指路', 
   }, exec(sid)), /判据对象形态/)
 })
 
-test('j4 组落账 判据绿 → settled（现状保持）', () => {
+test('j4 组落账 判据绿 → settled（现状保持）', async () => {
   const okMjs = path.join(TMP, 'ok.mjs')
   fs.writeFileSync(okMjs, 'process.stdout.write("CLEAN")\n', 'utf8')
   const s = settleState([`cmd:node ${okMjs}`])
-  const r = T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
+  const r = await T.trySettleGroups(s, [{ title: 'A1', status: 'closed' }])
   assert.match(r.notes.join(), /落账 ✓/, '判据绿=组落账')
   assert.ok(r.state.groups[0].settled && r.state.groups[0].settled.verdict === 'mechanical-settle')
 })

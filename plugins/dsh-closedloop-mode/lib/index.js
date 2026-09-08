@@ -41,10 +41,10 @@ import { createHash } from 'node:crypto'
 import {
   initMode, loadState, saveState, serializeState, STAGE_SEMANTICS, controlSurface, treeText,
   trigger, deactivate, loadConceptLimit, loadVerifyMode, onWeightsConfirmed, onWeightsUnlock,
-  stateFileFor, stateDirFor, readAutoConfirm,
+  stateFileFor, stateDirFor, readAutoConfirm, recordWrite,
 } from './mode-state.js'
 import { loadStack, stackTop, vLadderOf, optimalDir } from './optimal-engine.js'
-import { gateWrite } from './write-gate.js'
+import { gateWrite, WRITE_TOOLS } from './write-gate.js'
 import { noteFriction } from './friction-organ.js'
 import { onWriteGateDeny, onWriteGateAllow } from './gate-wiring.js'
 import { gateAmbientLine, PHASE_FOCUS } from './gate-ambient.js'
@@ -382,9 +382,10 @@ export function apply(ctx, config) {
             const sid = exec?.agent?.session?.id
             if (!sid) return undefined
             if (!presetAllowed(exec?.agent?.session, effectiveScopeConfig(config))) return undefined // v0.8.7 预设作用域外=插件静默（不闸不注）
+            const st = loadState(sid)
             const reason = gateWrite({
               toolName: exec.name,
-              state: loadState(sid),
+              state: st,
               hasOpenStep: stackTop(loadStack(sid))?.status === 'open',
               hasHumanTurn: humanTurnSids.has(sid),
               autoStartDisabled: config.autoStart === false,
@@ -393,6 +394,12 @@ export function apply(ctx, config) {
               try { noteFriction(sid, 'write-gate', reason) } catch { /* 记账失败不打断 */ }
               try { onWriteGateDeny({ tool: exec.name, reason: reason.slice(0, 60) }) } catch { /* 闸记录失败不影响拦截 */ }
             } else {
+              // v0.8.30 写入面台账：放行的 write/edit 记进 state.writeSet——判据可证伪门的数据源
+              // （门要拿"本会话产出"做负对照；没有台账就无从知道哪些文件是被审者的笔迹）。
+              try {
+                const fp = exec?.arguments?.file_path
+                if (st && WRITE_TOOLS.includes(exec.name) && fp) saveState(sid, recordWrite(st, String(fp)))
+              } catch { /* 台账失败不阻断写入 */ }
               try { onWriteGateAllow({ tool: exec.name }) } catch { /* 闸记录失败不影响放行 */ }
             }
             return reason

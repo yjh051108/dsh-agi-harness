@@ -14,7 +14,7 @@
 import {
   initMode, loadState, saveState, SEVERITIES, trigger,
   onCostCommit, onGroupsEdit, onWeightsFreeze, onWeightsConfirmed, onWeightsUnlock, recordClosed, markGroupSettled,
-  controlSurface, terminalCheck, treeText, allGroupsSettled, readAutoConfirm,
+  controlSurface, terminalCheck, treeText, allGroupsSettled, readAutoConfirm, recordIOU, payIOU, openIOU,
 } from './mode-state.js'
 import { declareStep, convergeStep, rollbackStep, loadStack, stackText, stackTop, optimalFileFor, optimalDir, loadProbes, saveProbes, settleDirtyTail, baselineLine, deviationLine, agreedMatch } from './optimal-engine.js'
 import { getJudge } from './judge.js'
@@ -35,6 +35,7 @@ import { execSync, execFileSync, spawn } from 'node:child_process'
 import { execCmdSync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
+import { runFalsifyGate, CONTROLS_FULL } from './falsify.js'
 import { recordAbility, abilitySummary, readAbilities } from './ability-organ.js'
 import { bindActualAction, buildTaskState, recordBoundOutcome } from './task-value-core.js'
 import { getModelFingerprint } from './gate-core.js'
@@ -257,8 +258,51 @@ export async function extractSigns(exec) {
   try { const ms = await exec?.agent?.session?.deriveMessages?.(); return collectUserSigns(ms) } catch { return new Set() }
 }
 
-export function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) {
+/** v0.8.30 判据执行器（三态）：负对照门与组落账共用同一分类器——同命令同分类。 */
+export function judgeRunner(cwd = process.cwd()) {
+  return (cmd) => {
+    try { execCmdSync(cmd, { timeout: judgeTimeoutMs(), cwd }); return 'green' }
+    catch (e) {
+      const k = classifyCmdError(e)
+      return k.state === 'green' ? 'green' : k.state === 'red' ? 'red' : 'broken' // broken/pending（跑不了）= 未判定
+    }
+  }
+}
+
+/**
+ * v0.8.30 判据可证伪门（合同期早警 + 组落账门共用）：对每条 cmd 判据跑负对照。
+ * 不变量：判据必须能对假货说不。字面壳/空转壳仍绿 ⇒ vacuous ⇒ block。
+ * 无产物（no-artifact）不拦（判据目标尚未创建或与写入面无关），只记 detail 供审计。
+ * @returns {Promise<{block:boolean, notes:string[], details:object[]}>}
+ */
+export async function falsifyBlock(accept, args = {}) {
+  const cwd = String(args.cwd || process.cwd())
+  const writeSet = Array.isArray(args.writeSet) ? args.writeSet : []
+  const run = typeof args.run === 'function' ? args.run : judgeRunner(cwd)
   const notes = []
+  const details = []
+  for (const x of (Array.isArray(accept) ? accept : [])) {
+    if (!String(x).startsWith('cmd:')) continue
+    let cmd
+    try { cmd = parseAcceptCmd(String(x)) } catch { continue }
+    let gate
+    try { gate = await runFalsifyGate({ cmd, writeSet, cwd, run, controls: CONTROLS_FULL }) }
+    catch (e) {
+      details.push({ cmd, verdict: 'unproven', reason: String(e?.message || e).slice(0, 120) })
+      continue
+    }
+    details.push({ cmd, verdict: gate.verdict, reason: gate.reason, artifacts: gate.artifacts.length })
+    if (gate.verdict === 'vacuous') {
+      notes.push(`判据空转（负对照仍绿）：${cmd.slice(0, 100)}\n     ↳ ${gate.reason}；改法=换成真跑产物的行为型判据（读运行时读数/真实副作用），或改挂 人判:，或换一条独立通道的判据`)
+    }
+  }
+  return { block: notes.length > 0, notes, details }
+}
+
+export async function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) {
+  const notes = []
+  // v0.8.31 支付通道：本拍真人签收帧即付（组名精确或「全部」）——签了字的欠据不再阻塞归零
+  s = payIOU(s, userSigns)
   for (const g of s.groups) {
     if (g.settled || !g.closeRequested) continue
     const acts = s.closed.filter((c) => c.group === g.title)
@@ -273,6 +317,13 @@ export function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) {
     if (g.verify === 'user') {
       const sig = userSigns || new Set()
       if (!sig.has(g.title) && !sig.has('全部')) { notes.push(`组「${g.title}」user 门未过：需导演真发「签收 ${g.title}」（或「签收全部」）——模型自写签收在此撞墙（帧判类只认 rpcId 真人面）`); continue }
+    }
+    // v0.8.30 判据可证伪门（落账前）：把写入面产物替换成负对照再跑判据——判据若照样绿，它是空的，不许落账。
+    //   位置刻意在实跑 cmd 判据**之前**：先证明这把尺子有刻度，再看它读数。
+    const fb = await falsifyBlock(g.accept, { writeSet: s.writeSet, cwd })
+    if (fb.block) {
+      notes.push(`组「${g.title}」判据不可证伪，不落账：\n${fb.notes.map((n) => '  ✗ ' + n).join('\n')}`)
+      continue
     }
     // v0.5.8 组判据挂账：cmd: 项落账时实跑（红=不落账）；人判: 项入落账回执（可见，供审计）
     // v0.6.24 三态分类（b7462c70 案底）：broken（跑不了）与 red（判据红）显式区分，不混同
@@ -295,7 +346,16 @@ export function trySettleGroups(s, steps, userSigns, cwd = process.cwd()) {
     }
     if (cmdFails.length) { notes.push(`组「${g.title}」判据未全绿，不落账：\n${cmdFails.map((f) => '  ✗ ' + f).join('\n')}`); continue }
     const r = markGroupSettled(s, g.title, 'mechanical-settle')
-    if (r.ok) { s = r.state; notes.push(`组「${g.title}」落账 ✓（动作×${acts.length}，栈闭合齐${g.verify === 'redteam' ? '，审全 pass' : ''}${(g.accept || []).filter((x) => String(x).startsWith('cmd:')).length ? '，cmd 判据全绿' : ''}${honorNotes.length ? `；人判挂账：${honorNotes.join('；')}（未机械验证，审计可追）` : ''}）`) }
+    if (r.ok) {
+      s = r.state
+      // v0.8.31 欠据：人判项登记为欠据（不再当"挂账"放行）——未付欠据阻止终端归零。
+      //  口径改动的原因（池核案底）：机器看不见的项恰恰决定质量，挂账=可放行的放过。
+      if (honorNotes.length) s = recordIOU(s, g.title, honorNotes)
+      const iouLine = honorNotes.length
+        ? `；⏳ 人判欠据 ${honorNotes.length} 条（待开发者签收——回「签收 ${g.title}」或「签收全部」）：${honorNotes.join('；')}`
+        : ''
+      notes.push(`组「${g.title}」落账 ✓（动作×${acts.length}，栈闭合齐${g.verify === 'redteam' ? '，审全 pass' : ''}${(g.accept || []).filter((x) => String(x).startsWith('cmd:')).length ? '，cmd 判据全绿' : ''}${iouLine}）`)
+    }
   }
   if (allGroupsSettled(s) && s.stage !== 'final') { s = { ...s, stage: 'final' }; notes.push('全组落账 → 终端校验态：terminal_check 出归零报告。') }
   return { state: s, notes }
@@ -444,6 +504,18 @@ for (const g of groups) {
   }
 }
         if (bad.length) throw new Error(`组「${g.title}」accept 前缀闸：每条判据须「cmd:<可跑命令>」（落账时实跑，红=不落账）或「人判:<内容>」（落账回执挂账可见，供审计）——裸判据=可空转（体感实测案底）`)
+      }
+      // v0.8.30 判据可证伪门（合同期早警）：写入面已有产物时，当场把产物替换成负对照再跑判据——
+      //   空转判据（判据被字符串本身满足）在写合同的当天就拒收，而不是等落账时才拦。
+      //   无产物=不拦（判据目标尚未创建），落账门会再拦一次。
+      {
+        const accepts = groups.flatMap((g) => g.accept || [])
+        const fb = await falsifyBlock(accepts, { writeSet: s.writeSet, cwd: sessionCwd(exec) })
+        if (fb.block) {
+          for (const n of fb.notes) { try { recordLesson('vacuous-judge', n.slice(0, 120), 'tools:decompose', undefined, sid) } catch { /* 教训记账失败不阻断拒收 */ } }
+          throw new Error('【判据空转】负对照仍绿=这条判据能被假货满足（不是尺子，是摆设）：\n' + fb.notes.map((n) => '  ✗ ' + n).join('\n')
+            + '\n负对照=把本会话写入面的产物换成「字面壳（只含判据要匹配的字符串）/空转壳（结构合法但什么都不做）」再跑你的判据。')
+        }
       }
       // v0.5.12 引导体系v2 自主档驱动行为（敢走开第一落地）：T≥2 时 verify=user 自动降级 self（可回退——降档即收回）
       const rankT0 = (s.rank && s.rank.T) || 0
@@ -834,7 +906,7 @@ export function optimalConvergeDefinition() {
         if (tgt) { tgt.closeRequested = true; notes.push(`组「${gTitle}」请求落账`) }
         // v0.8.15 漏传 cwd 案底：此处曾走 trySettleGroups 的默认 process.cwd()（宿主目录），
         // 判据里的相对路径必然落到 C:\Users\Administrator —— 与 terminal_check 的调用点不一致。
-        const tr = trySettleGroups(s, loadStack(sid).steps, await extractSigns(exec), sessionCwd(exec))
+        const tr = await trySettleGroups(s, loadStack(sid).steps, await extractSigns(exec), sessionCwd(exec))
         s = tr.state
         notes.push(...tr.notes)
       }
@@ -895,7 +967,7 @@ export function auditRecordDefinition(name = 'audit_record') {
       let s2 = rec.state
       const notes = [`审落账：「${args.title}」verdict=${p.verdict.verdict}（rounds=${s2.closed.find((c) => c.title === args.title)?.audit?.rounds}）`]
       if (p.verdict.verdict === 'reject') notes.push('打回义务：修复后**再审**（新引文），过审前该组落账门不开。')
-      const tr = trySettleGroups(s2, loadStack(sid).steps, await extractSigns(exec), sessionCwd(exec))
+      const tr = await trySettleGroups(s2, loadStack(sid).steps, await extractSigns(exec), sessionCwd(exec))
       s2 = tr.state
       notes.push(...tr.notes)
       saveState(sid, s2)
@@ -1065,6 +1137,8 @@ export function terminalCheckDefinition() {
     async execute(_args, exec) {
       const sid = sidOf(exec)
       let s = mustState(sid) // v0.5.0 案底修：档位评估需回写 s，const 重赋值=TypeError（E2E 抓，catch 曾吞成"评估异常"）
+      // v0.8.31 支付通道：终检时先把本会话真人签收帧入账（「签收 <组名>」/「签收全部」）
+      s = payIOU(s, await extractSigns(exec))
       const enterRank = s.rank // 进场档位：本单规则（归档/面板/自动放行）由开环时的信任档决定，与 verify 降级口径一致
       const rep = terminalCheck(s.cost, loadStack(sid), s, s.stage)
       // v0.5.0 档位器官：单末评估（C 从盘账复算非自评；滞回升降；碎拍冻结；T3 提示位）
@@ -1124,8 +1198,23 @@ export function terminalCheckDefinition() {
       })()
       const archiveNote = (enterRank && enterRank.T >= 2) ? '\n✅ 已自动归档（T2：导演可回望，无需签收）' : ''
       const panelLine = '\n🎛 导演面板：档位 T' + ((enterRank && enterRank.T) || 0) + '·能力 ' + readAbilities().length + ' 单·抽审 ' + ((s.groups || []).filter((g) => g && g.auditSampled).length) + ' 组'
-      const honorLine = '\n未机械验证：' + ((s.groups || []).reduce((n, g) => n + ((g.accept || []).filter((x) => String(x).startsWith('人判:')).length), 0)) + ' 项（人判判据挂账可审计）'
-      return { ok: true, text: head + `\n目的：${cut(rep.purpose, 60)}` + archiveNote + panelLine + honorLine + rankNote + stampNote + priceNote + (draft ? `\n\n${draft}` : '') }
+      const honorLine = (() => {
+        // v0.8.31 口径换血：人判项=欠据（必须真人签收），不再是"挂账可审计"（池核案底）
+        const open = (rep.openIOU || [])
+        const total = (s.groups || []).reduce((n, g) => n + ((g.accept || []).filter((x) => String(x).startsWith('人判:')).length), 0)
+        if (total === 0) return ''
+        if (open.length === 0) return `\n✅ 人判欠据 ${total} 条已由开发者签收（可追：state.iou.paidAt）`
+        return `\n⏳ 未归零：${open.length} 条人判欠据待开发者签收——机器部分已齐，人判部分不许自认通过：\n`
+          + open.map((e) => `  · [${e.group}] ${cut(e.text, 70)}`).join('\n')
+          + `\n  付清方式：回「签收全部」或「签收 <组名>」（真人帧；模型自写不算）`
+      })()
+      const head2 = (() => {
+        const open = (rep.openIOU || [])
+        if (rep.zero || open.length === 0) return head
+        if (rep.unsettledGroups.length || rep.openSteps.length || rep.dipPending) return head
+        return `⏸ 未归零：${open.length} 条人判欠据待开发者签收（机器部分已齐）`
+      })()
+      return { ok: true, text: head2 + `\n目的：${cut(rep.purpose, 60)}` + archiveNote + panelLine + honorLine + rankNote + stampNote + priceNote + (draft ? `\n\n${draft}` : '') }
     },
   }
 }

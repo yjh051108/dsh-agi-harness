@@ -73,6 +73,14 @@
       "to": "return false",
       "line": "savePricing() 末尾 return true",
       "reason": "机械核验（grep 全仓 savePricing 调用）：唯一调用点 tools.js L1110 是裸语句 `savePricing(dir, pr)`，返回值无人使用——死返回值"
+    },
+    {
+      "file": "src/falsify.js",
+      "kind": "length-plus1",
+      "from": ".length",
+      "to": ".length + 1",
+      "line": "extractLiterals: for (let i = 0; i < s.length; i++)",
+      "reason": "机械核验：多出的一轮取 s[s.length] === undefined，既不是引号也不进任何分支（continue），两种写法在所有输入上行为一致——循环上界多 1 惰性无害"
     }
   ]
 }

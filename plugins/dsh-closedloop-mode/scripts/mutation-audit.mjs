@@ -32,17 +32,45 @@ const TARGETS = [
   { file: 'src/intent.js', tests: ['tests/intent-protocol.test.mjs', 'tests/freeze-decision.test.mjs', 'tests/user-signs.test.mjs'] },
   // 映射纪律（实测案底）：只收**沙箱自包含**测试（不 import 插件入口 index.js——它带宿主外部依赖，
   // 在审计沙箱里必红，会把整轮审计卡在基线绿门前）。tools-v3/panel-v3/v04-wiring 均因此不入映射。
-  { file: 'src/mode-state.js', tests: ['tests/mode-state-v3.test.mjs', 'tests/auto-contract.test.mjs', 'tests/discrimination.test.mjs', 'tests/judge.test.mjs'] },
-  { file: 'src/tools.js', tests: ['tests/infra-cwd.test.mjs', 'tests/delivery-attest.test.mjs', 'tests/probe-tokens.test.mjs', 'tests/user-signs.test.mjs', 'tests/judge-criteria.test.mjs', 'tests/tools-mutation-guard.test.mjs'] },
+  { file: 'src/mode-state.js', tests: ['tests/mode-state-v3.test.mjs', 'tests/auto-contract.test.mjs', 'tests/discrimination.test.mjs', 'tests/judge.test.mjs', 'tests/falsify-wiring.test.mjs', 'tests/iou-ledger.test.mjs', 'tests/iou-terminal.test.mjs'] },
+  { file: 'src/tools.js', tests: ['tests/infra-cwd.test.mjs', 'tests/delivery-attest.test.mjs', 'tests/probe-tokens.test.mjs', 'tests/user-signs.test.mjs', 'tests/judge-criteria.test.mjs', 'tests/tools-mutation-guard.test.mjs', 'tests/iou-settle.test.mjs', 'tests/falsify-wiring.test.mjs'] },
   { file: 'src/gate-core.js', tests: ['tests/gate-core.test.mjs', 'tests/model-fingerprint.test.mjs', 'tests/gate-core-model.test.mjs', 'tests/gate-core-guard.test.mjs'] },
   { file: 'src/run-cmd.js', tests: ['tests/run-cmd.test.mjs', 'tests/run-cmd-tokenize.test.mjs'] },
   { file: 'src/rank-organ.js', tests: ['tests/rank.test.mjs', 'tests/rank-guide.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
   { file: 'src/pricing-organ.js', tests: ['tests/pricing.test.mjs', 'tests/rollback-cause.test.mjs', 'tests/rank-pricing-guard.test.mjs'] },
   { file: 'src/intervene.js', tests: ['tests/intervene-metric.test.mjs'] },
+  // v0.8.30 判据可证伪门（新件即入靶：不许"新代码无变异覆盖"）
+  { file: 'src/falsify.js', tests: ['tests/falsify-core.test.mjs', 'tests/falsify-gate.test.mjs', 'tests/falsify-wiring.test.mjs'] },
 ]
 
 const run = (args, cwd) => {
   try { execFileSync(process.execPath, args, { cwd, stdio: 'ignore', timeout: 180000 }); return 0 } catch { return 1 }
+}
+
+/**
+ * v0.8.31 显式补点：自动算子每类只取**首命中位**（perKind=1），文件后半段的新函数没人覆盖——
+ * 「加进 TARGETS」不等于「被变异」。这里手工登记必须被守的变异点（每条 find 必须在文件里唯一出现）。
+ */
+const EXTRA_SITES = [
+  { file: 'src/mode-state.js', kind: 'iou-guard', find: "if (!g) return s\n  const list", to: "if (g) return s\n  const list" },
+  { file: 'src/mode-state.js', kind: 'iou-filter', find: '.filter((e) => !(e && e.group === g && !e.paidAt))', to: '.filter((e) => !(e && e.group === g && e.paidAt))' },
+  { file: 'src/mode-state.js', kind: 'iou-pay-logic', find: "if (set.has(e.group) || set.has('全部'))", to: "if (set.has(e.group) && set.has('全部'))" },
+  { file: 'src/mode-state.js', kind: 'iou-open-flip', find: '.filter((e) => e && !e.paidAt)', to: '.filter((e) => e && e.paidAt)' },
+  { file: 'src/tools.js', kind: 'iou-drop-pay', find: 's = payIOU(s, userSigns)', to: 's = s' },
+  { file: 'src/tools.js', kind: 'falsify-verdict-flip', find: "if (gate.verdict === 'vacuous')", to: "if (gate.verdict !== 'vacuous')" },
+  { file: 'src/falsify.js', kind: 'reach-seen-guard', find: 'if (depth > maxDepth || seen.has(norm(file))) return', to: 'if (depth > maxDepth || !seen.has(norm(file))) return' },
+  { file: 'src/falsify.js', kind: 'reach-cwd-guard', find: 'if (!inCwd(p)) continue', to: 'if (inCwd(p)) continue' },
+]
+function extraFor(file, pristine) {
+  const out = []
+  for (const s of EXTRA_SITES) {
+    if (s.file !== file) continue
+    const at = pristine.indexOf(s.find)
+    if (at < 0) continue
+    if (pristine.indexOf(s.find, at + 1) >= 0) throw new Error(`EXTRA_SITES 非唯一匹配：${s.file} ${s.kind}`)
+    out.push({ kind: s.kind, from: s.find, to: s.to, at, len: s.find.length, line: pristine.slice(0, at).split('\n').length })
+  }
+  return out
 }
 
 rmSync(SANDBOX, { recursive: true, force: true })
@@ -69,7 +97,7 @@ for (const t of TARGETS) {
   const srcPath = join(SANDBOX, t.file)
   if (!existsSync(srcPath) || !t.tests.every((r) => existsSync(join(SANDBOX, r)))) { ledger.push({ file: t.file, skipped: '缺文件' }); continue }
   const pristine = readFileSync(srcPath, 'utf8')
-  for (const m of deriveMutations(pristine, { perKind: PER_KIND })) {
+  for (const m of [...deriveMutations(pristine, { perKind: PER_KIND }), ...extraFor(t.file, pristine)]) {
     const mutated = applyMutation(pristine, m)
     if (revertMutation(mutated, m) !== pristine) { ledger.push({ file: t.file, kind: m.kind, line: m.line, skipped: '不可逆' }); continue }
     writeFileSync(srcPath, mutated)

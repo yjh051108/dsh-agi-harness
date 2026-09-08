@@ -43,9 +43,12 @@ test('h6 审计轮转：槽位≥2、模板 hash 16 位定长', () => {
   assert.equal(rot.templateHash('anything').length, 16)
 })
 
-test('h7 人判挂账落账回执可见（信任声明不冒充已验证）', () => {
-  assert.match(tools, /人判挂账/)
-  assert.match(tools, /未机械验证/)
+test('h7 人判欠据落账/终检可见（信任声明不冒充已验证）', () => {
+  // v0.8.31 口径换血（池核案底）：人判项从「挂账可审计」改成「欠据必须真人签收」——旧字样不得复活
+  assert.match(tools, /人判欠据/)
+  assert.match(tools, /待开发者签收/)
+  assert.match(tools, /未归零：/)
+  assert.ok(!/人判挂账/.test(tools), '「挂账」=可放行口径，已废（池核案：7 条人判挂账后照样交付完成）')
 })
 
 test('h8 PERSONA 启动人格单源(persona.js 薄面合同不破)+接线绝对入口（v0.6.31：环开首注，不再随 cost_set 回执）', async () => {
