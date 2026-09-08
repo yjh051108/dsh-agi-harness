@@ -26,20 +26,20 @@ window.__ModuleLoader__.load({
 .graded-l1{display:flex;align-items:center;gap:6px;padding:4px 2px;border-top:1px solid var(--dsw-alias-border-l2,#eee)}
 .graded-l1:first-child{border-top:none}
 .graded-l1-title{font-weight:600;margin-right:4px}
-.graded-chip{font-size:11px;background:var(--dsw-alias-bg-code,#f2f2f2);border-radius:8px;padding:1px 7px;color:var(--dsw-alias-label-secondary,#666)}
+.graded-chip{font-size:11px;background:var(--dsw-alias-bg-module-platform);border-radius:8px;padding:1px 7px;color:var(--dsw-alias-label-secondary,#666)}
 .graded-hint{font-size:11px;color:var(--dsw-alias-label-tertiary,#999);margin-top:2px}
-.graded-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 10px;border-radius:10px;background:var(--dsw-alias-bg-code,#f2f2f2);color:var(--dsw-alias-label-secondary,#555);cursor:pointer;border:1px solid var(--dsw-alias-border-l2,#e5e5e5);user-select:none}
-.graded-badge:hover{background:var(--dsw-alias-bg-hover,#e8e8e8)}
+.graded-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 10px;border-radius:10px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary,#555);cursor:pointer;border:1px solid var(--dsw-alias-border-l2,#e5e5e5);user-select:none}
+.graded-badge:hover{background:var(--dsw-alias-bg-layer-2)}
 .graded-badge-stage{font-weight:600}
 .graded-badge-off{filter:grayscale(1);opacity:.55;cursor:default;pointer-events:none}
-.graded-pop{position:fixed;right:14px;top:60px;z-index:99999;background:var(--dsw-bg,#fff);border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;min-width:300px;max-height:80vh;overflow:auto;pointer-events:auto}
+.graded-pop{position:fixed;right:14px;top:60px;z-index:99999;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px 12px;min-width:300px;max-height:80vh;overflow:auto;pointer-events:auto}
 .graded-pop-progress{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .graded-pop-progress b{font-size:16px;color:var(--dsw-alias-label-primary,#222)}
 .v-stair-wrap{border-top:1px solid var(--dsw-alias-border-l2,#eee);padding-top:6px}
 /* 设置页卡：外观对齐官方 PluginCard（li + header button + 展开体；官方类为 CSS module 哈希不可复用） */
-.cl-card{list-style:none;margin:0 0 14px;padding:0;border:1px solid var(--dsw-alias-border-l2,#e6e6e6);border-radius:12px;background:var(--dsw-bg,#fff);overflow:hidden}
+.cl-card{list-style:none;margin:0 0 14px;padding:0;border:.5px solid var(--dsw-alias-border-l4);border-radius:16px;background:var(--dsw-alias-bg-layer-3);overflow:hidden}
 .cl-card-head{display:flex;width:100%;align-items:center;gap:12px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:inherit}
-.cl-card-head:hover{background:var(--dsw-alias-bg-hover,#f7f7f7)}
+.cl-card-head:hover{background:var(--dsw-alias-bg-layer-2)}
 .cl-card-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
 .cl-card-name{font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary,#222)}
 .cl-card-desc{font-size:14px;color:var(--dsw-alias-label-tertiary,#8a8a8a)}
@@ -159,7 +159,7 @@ window.__ModuleLoader__.load({
             e("b", null, st.done + "/" + st.total),
             e("span", { className: "graded-chip" }, "任务: " + (st.task || "-")),
             e("span", { className: "graded-chip", title: "数据绑当前会话" }, "sid " + (st.sidShort || "?"))),
-          st.cost && st.cost.purpose && e("div", { style: { fontSize: "12px", color: "#444", margin: "2px 0 4px", padding: "4px 6px", background: "#faf7e8", borderRadius: "6px" } },
+          st.cost && st.cost.purpose && e("div", { style: { fontSize: "12px", color: "var(--dsw-alias-label-secondary)", margin: "2px 0 4px", padding: "4px 6px", background: "var(--dsw-alias-bg-module-platform)", borderRadius: "6px" } },
             "★ 目的: " + st.cost.purpose),
           st.cost && Array.isArray(st.cost.assertions) && st.cost.assertions.length > 0 && e("div", { className: "graded-hint", style: { marginBottom: "4px" }, title: st.cost.assertions.map((a) => "[" + a.severity + "] " + a.text).join("\n") },
             "Q_N×" + st.cost.assertions.length + ": " + st.cost.assertions.map((a) => (a.severity === "catastrophic" ? "⚡" : a.severity === "minor" ? "○" : "△") + a.text.slice(0, 14)).join(" ")),
