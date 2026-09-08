@@ -65,7 +65,9 @@ export function materialize(surface, diff) {
       wrongSignal: String(d.wrong || '任一预测实测≠声明，或通道标识非两两不同'),
       channels,
     },
-    vExpect: ['dip', 'maintain'].includes(d.vExpect) ? d.vExpect : 'improve',
+    // v0.8.26：不再注入 'improve' 默认值（旧行为把「模型省略」变成「显式 improve」→ at 档必被 maintainGate 拒，
+    // 而档位是引擎已知事实——这就是「猜档位」摩擦的源头）。省略=undefined，由 declareStep 按 ticketBand 推导。
+    vExpect: ['improve', 'dip', 'maintain'].includes(d.vExpect) ? d.vExpect : undefined,
     dipPlan: String(d.dipPlan || ''),
     confidence: ['high', 'medium', 'low'].includes(d.confidence) ? d.confidence : 'medium',
   }

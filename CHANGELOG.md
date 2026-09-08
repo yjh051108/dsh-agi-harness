@@ -1,5 +1,17 @@
 # 更新说明
 
+## v0.3.17 — vExpect 推导化（消除「猜档位」摩擦）
+
+### 变更
+- **`vExpect` 可省略**：它是「引擎已读档位（`ticketBand`）下唯一合法值」却要模型猜——猜错就吃 `maintainGate` 拒 + 回炉计账，把**协议摩擦**记成**模型判断错**。现改为：省略即由 `declareStep` 按档位推导（`at`→`maintain`，否则→`improve`），并落 `vExpectSource=derived|declared` 可审计。
+- **`contract-merge` 不再注入 `vExpect:'improve'`**（摩擦真正源头：模型省略被 merge 变成显式 `improve` → at 档必拒）。省略=undefined，交给引擎推导。
+- **保护不放松**：显式写非法值仍拒（at 档显式 `improve` → `maintainGate`；merge 注入形状 m6 回归锁照旧）；`dip` 仍需 `dipPlan`。
+- **可读性**：声明回执新增 `vExpect=…（未填→引擎按当前档推导 / 显式声明）`；`optimal_stack` 新增 `当前档=<band>（省略 vExpect 时按此推导）`——声明前就能读到。
+
+### 验证
+- 新增 `vexpect-derive.test.mjs` 6 条（at→maintain / far·无档→improve / 显式 dip 保留 / at 档显式 improve 仍拒 / stackText 明示档位 / **端到端：materialize 不再注入 improve**）；`maingate` m1 按新契约重写（省略=推导放行），m5/m6 显式非法仍拦。
+- 全量 **451/451**；变异审计 65/65 杀死、等价 9；棘轮十模块 1.0；账本快检退出 0；构建 36 文件；热重载 `active → active`。
+
 ## v0.3.16 — 变异审计纳保 rank-organ + pricing-organ（守护目标 8 → 10）
 
 ### 变更

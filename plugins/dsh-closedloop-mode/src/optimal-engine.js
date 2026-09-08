@@ -288,6 +288,12 @@ export function declareStep(sid, args) {
   const badSrc = rawPreds.find((p) => p?.source && typeof p.source === 'object' && normalizeSource(p.source) === null)
   if (badSrc) return { ok: false, error: `来源形态非法：${JSON.stringify(badSrc.source).slice(0, 80)}——对象只认 {kind:"probe",key} / {kind:"read",path,line?} / {kind:"prior",text} / {kind:"engram",title}；或继续用字符串 read:<path>#L<n> / probe:<key> / prior:<文本> / engram:<标题>` }
   const preds = rawPreds.map((p) => ({ ...p, source: p?.source && typeof p.source === 'object' ? normalizeSource(p.source) : p?.source }))
+  // v0.8.26 vExpect 推导化（摩擦账本案底：vExpect 是引擎已读档位唯一合法值，却要模型猜——猜错=maintainGate 拒
+  // +回炉计账，把协议摩擦记成模型判断错）。现：省略即按 ticketBand 推导；显式值仍须合法（保护不放松）。
+  const V_EXPECTS = ['improve', 'dip', 'maintain']
+  const band = args?.ticketBand || null
+  const declaredVE = V_EXPECTS.includes(args?.vExpect) ? String(args.vExpect) : ''
+  const vExpect = declaredVE || (band === 'at' ? 'maintain' : 'improve')
   const step = {
     n: cur ? cur.n + 1 : 1,
     title: String(args?.title || '').trim(),
@@ -297,7 +303,8 @@ export function declareStep(sid, args) {
     cost: (args?.cost || args?.budget || []).map((c) => ({ failure: String(c.failure), defense: String(c.defense), weight: String(c.weight || '标准：失败态权重→∞（防错=选标准）') })),
     law: (args?.law || []).map((l) => ({ signal: String(l.signal), action: String(l.action) })),
     measure: args?.measure ? { right: String(args.measure.right || ''), wrongSignal: String(args.measure.wrongSignal || ''), channels: (Array.isArray(args.measure.channels) ? args.measure.channels : []).map(String) } : null,
-    vExpect: ['improve', 'dip', 'maintain'].includes(args?.vExpect) ? args.vExpect : 'improve',
+    vExpect,
+    vExpectSource: declaredVE ? 'declared' : 'derived',
     dipPlan: String(args?.dipPlan || ''),
     confidence: ['high', 'medium', 'low'].includes(args?.confidence) ? args.confidence : 'medium',
     status: 'open', agreed: [], discrepancies: [], discrepancyCodes: [], dv: null, signature: '', at: Date.now(),
@@ -318,9 +325,9 @@ export function declareStep(sid, args) {
   { const firstStep = !(s.steps || []).some((x) => x && (x.status === 'open' || x.status === 'closed'))
     if (firstStep) { try { const opened = statSync(optimalFileFor(sid)).mtimeMs; const gapMin = Math.round((Date.now() - opened) / 60000); if (gapMin >= 10) { step.prepGapMin = gapMin; step.discrepancies.push(`准备黑洞 ${gapMin}min：开环后首步迟到——环境/准备也该升格为带预测的声明步（probe_record 留痕再 declare），此条入卷不拦路`); step.discrepancyCodes.push('prep-gap') } } catch { /* 无 mtime=不装测 */ } } }
   // maintainGate（r20 立、r44 修活、r48 定界）：at 档非 maintain/dip 预期必死在 ΔV 闸——declare 预拦。
-  // r43 哑火案底：undefined 判据被 merge 默认值绕过（函数对线哑）。r48 活线首拦实锤后自曝越界案：闸拿栈史尾判档，新票开板 state=far 而栈尾=上票 at——误拦真推进首步。定界=只信合同内权威 state.lastBand（args.ticketBand 传入），无则宁放不误伤（假阳性比漏拦更伤信任）。
-  { const band = args?.ticketBand || null
-    if (band === 'at' && !['maintain', 'dip'].includes(args?.vExpect)) return { ok: false, error: 'maintainGate：当前档=at（已到顶，无可再降）。at 之后只有两种合法动作：保持（vExpect=maintain）或回滚。若你这一步是验证/保持性质：把 vExpect 改成 maintain 重发；若你真认为还能进步：说明上一步不该到 at（建模错），先回滚重新推。案底：r5/r10/r19×3/r43×2（漏标/哑闸/越界史，机器记忆）' } }
+  // v0.8.26 推导化后只拦**显式**非法值（省略即由引擎推 maintain，不再逼模型猜——摩擦账本案底）。
+  { const bandG = args?.ticketBand || null
+    if (bandG === 'at' && !['maintain', 'dip'].includes(step.vExpect)) return { ok: false, error: 'maintainGate：当前档=at（已到顶，无可再降）。at 之后只有两种合法动作：保持（省略 vExpect 即由引擎推导 maintain）或回滚。若你这一步是验证/保持性质：**把 vExpect 删掉重发**（引擎按档位推导）；若你真认为还能进步：说明上一步不该到 at（建模错），先回滚重新推。案底：r5/r10/r19×3/r43×2（漏标/哑闸/越界史，机器记忆）' } }
   step.signature = modelSignature(step)
   // 反漂移（定理 6）：被回滚步的签名与新声明相同 → 拒绝（必须 重推：改来源/权重/状态定义之一）
   const rb = (s.rolledBack || []).filter((r) => r.title === step.title)
@@ -604,8 +611,10 @@ export function stackText(s) {
   })
   const ladder = vLadderOf(s.steps)
   const vTl = ladder.run.map((r) => `#${r.n}「${r.title}」${r.from}→${r.to}`).join(' ⇒ ') + (ladder.dipPending ? ` [dip 挂账 ${ladder.dipPending} 笔未清偿]` : '')
+  // v0.8.26 当前档明示：声明前就能读到（省略 vExpect 时引擎按此推导）
+  const lastBand = [...s.steps].reverse().find((x) => x.dv && x.dv.after)?.dv.after || 'far'
   const rb = (s.rolledBack || []).length ? '\n重推 审计：' + s.rolledBack.map((r) => `#${r.n}「${r.title}」原因=${r.reason}`).join(' | ') : ''
-  return `**动作栈（${s.steps.length} 步）**\n${rows.join('\n')}\n栈顶=${stackTop(s)?.status || '-'}\n档位时间线：${vTl || '（无闭合步）'}${rb}`
+  return `**动作栈（${s.steps.length} 步）**\n${rows.join('\n')}\n栈顶=${stackTop(s)?.status || '-'}\n当前档=${lastBand}（省略 vExpect 时按此推导：at→maintain，否则→improve）\n档位时间线：${vTl || '（无闭合步）'}${rb}`
 }
 
 /** backward 价值链初始档（L2 锁定回执用，SPEC §6：锁定时从盘档算初档呈现）。 */

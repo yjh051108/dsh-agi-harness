@@ -1,6 +1,7 @@
 /**
- * maingate.test — maintainGate（declare 时刻预拦 at 档漏标步）三例
- * m1 at 档未标 vExpect=拒（含指路文案）；m2 标 maintain=放行；m3 非 at 档未标不误伤
+ * maingate.test — maintainGate（declare 时刻预拦 at 档**显式**非法预期）
+ * m1 at 档未标 vExpect → 引擎按档位推导 maintain 放行（v0.8.26 摩擦修复：不再逼模型猜）
+ * m2 标 maintain=放行；m3 非 at 档未标不误伤；m5/m6 显式 improve（含 merge 注入）仍拦
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,12 +17,12 @@ const eng = await import('../src/optimal-engine.js')
 const baseStep = (after) => ({ n: 1, title: '前步', status: 'closed', at: Date.now() - 5000, dv: { before: 'far', after, channels: ['a', 'b'], mode: 'improve' }, predictions: [], signature: 'x' })
 const args = (extra) => ({ title: '新步', predictions: [{ key: 'k', value: '1', source: 'prior:测试先验' }], measure: { channels: ['read: a', 'rt: b'] }, law: [{ signal: '红', action: '回炉' }], ticketBand: 'at', ...extra })
 
-test('m1 at 档未标 vExpect → declare 预拦（maintainGate 文案含指路）', () => {
+test('m1 at 档未标 vExpect → 引擎推导 maintain 放行（v0.8.26：档位是引擎已知事实，不逼模型猜）', () => {
   eng.saveStack('mg-1', { version: 2, steps: [baseStep('at')], rolledBack: [] })
   const r = eng.declareStep('mg-1', args())
-  assert.equal(r.ok, false)
-  assert.match(r.error, /maintainGate/)
-  assert.match(r.error, /vExpect\s*(?:=|改成)\s*'?maintain'?/, '指路文案：vExpect 字段+maintain 值（人话版，不钉引号词面）')
+  assert.equal(r.ok, true, r.error || '')
+  assert.equal(r.step.vExpect, 'maintain', '按 beforeBand=at 推导')
+  assert.equal(r.step.vExpectSource, 'derived')
 })
 
 test('m2 at 档标 maintain → 放行落盘', () => {
@@ -64,12 +65,14 @@ test('m6 生产形状锁（r43 哑火案根因）：merge 注入默认 improve �
   const cm = await import('../src/contract-merge.js')
   eng.saveStack('mg-6', { version: 2, steps: [baseStep('at')], rolledBack: [] })
   const diff = { title: '新步', group: 'g', predict: [{ key: 'k', value: '1', source: 'prior:测试' }], channels: ['read: a', 'rt: b'] }
-  let contract
   const m = typeof cm.materialize === 'function' ? cm.materialize({ lastBand: 'at', qn: [] }, diff) : null
-  contract = m && m.ok ? m.contract : { ...diff, predictions: diff.predict, vExpect: 'improve' } // 兜底复造 merge 旧行注入形状（哑火根因形状）
+  let contract
+  // v0.8.26：materialize 不再注入 'improve'（省略=undefined→引擎推导）。本锁复造**旧生产形状**（显式 improve），
+  // 验的语义没变：值在场就必须被查（哑火根因=判据依赖 undefined）。
+  contract = m && m.ok ? { ...m.contract, vExpect: 'improve' } : { ...diff, predictions: diff.predict, vExpect: 'improve' }
   contract.ticketBand = 'at' // r48 定界后生产形状=tools 注入本票权威档
   const r = eng.declareStep('mg-6', contract)
-  assert.equal(r.ok, false, '注入 improve 也拦=语义判据不依赖 undefined（哑火根治）')
+  assert.equal(r.ok, false, '显式 improve 也拦=语义判据不依赖 undefined（哑火根治）')
   assert.match(r.error, /maintainGate/)
 })
 

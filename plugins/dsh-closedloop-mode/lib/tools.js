@@ -628,7 +628,7 @@ export function measureProposeDefinition() {
 export function optimalDeclareDefinition() {
   return {
     name: 'optimal_declare',
-    description: '【闭环·声明·差分面 v0.3】args=diff：title+group（提议归属）+predict[{key,value,source}]（**source 两形态**：字符串 read:<path>#L<n> / probe:<key> / prior:<文本> / engram:<标题>，或对象 {kind:"probe",key} / {kind:"read",path,line?} / {kind:"prior",text} / {kind:"engram",title}——对象免正则歧义）+channels[≥2]（不足按第5闸重流程）+可选覆写 invariants/law/cost/vExpect/dipPlan/confidence/right/wrong。链式量（beforeBand=盘档 lastBand）/Q_N 成本投影/法基行由引擎物化——模型不抄。物化全量交 declareStep 同一道闸（无源=拒、≥2通道、dip 回升、签名局部化）。**vExpect 三段用法（按引擎回执显示的 beforeBand 选，验证类=该段自然归宿）**：① beforeBand=far/near 且有增量→improve（严格提升）；② 基建/暂平段（档位平或暂劣）→dip+必填 dipPlan 回升计划；③ beforeBand=at 或验证/核验/保持类（已达标确认）→maintain（测后仍 at 即闭合，掉档=倒退直拒）。⚠ 两条高频拒因前置：①引 probe:<key> 的预测——值内数字必须出现在该探针实跑 output（引旧探针=拒，拒语自带台账尾供换引）；②回滚后同签名重 declare 直拒——改 title/来源/不变式任一再宣。兼容 v0.2 全量形状（含 measure/law 直传）。',
+    description: '【闭环·声明·差分面 v0.3】args=diff：title+group（提议归属）+predict[{key,value,source}]（**source 两形态**：字符串 read:<path>#L<n> / probe:<key> / prior:<文本> / engram:<标题>，或对象 {kind:"probe",key} / {kind:"read",path,line?} / {kind:"prior",text} / {kind:"engram",title}——对象免正则歧义）+channels[≥2]（不足按第5闸重流程）+可选覆写 invariants/law/cost/vExpect/dipPlan/confidence/right/wrong。链式量（beforeBand=盘档 lastBand）/Q_N 成本投影/法基行由引擎物化——模型不抄。物化全量交 declareStep 同一道闸（无源=拒、≥2通道、dip 回升、签名局部化）。**vExpect 三段用法（v0.8.26 起可省略——引擎按当前档推导：at→maintain，否则→improve；只有 dip 必须显式声明）**：① 默认/增量→省略（或显式 improve，严格提升）；② 基建/暂平段（档位平或暂劣）→显式 dip+必填 dipPlan 回升计划；③ 当前档=at 的验证/保持步→省略（推导为 maintain，测后仍 at 即闭合，掉档=倒退直拒）。⚠ 显式写错仍拒（at 档写 improve=maintainGate 直拒，那是逃避保持义务）。⚠ 两条高频拒因前置：①引 probe:<key> 的预测——值内数字必须出现在该探针实跑 output（引旧探针=拒，拒语自带台账尾供换引）；②回滚后同签名重 declare 直拒——改 title/来源/不变式任一再宣。兼容 v0.2 全量形状（含 measure/law 直传）。',
     parameters: {
       type: 'object', additionalProperties: false, required: ['title'],
       properties: {
@@ -706,6 +706,8 @@ export function optimalDeclareDefinition() {
       const lowNote = r.step.confidence === 'low' ? '\n⚠ 可辨识性=低：停下交分歧点，不得硬实现。' : ''
       const dipNote = r.step.vExpect === 'dip' ? '\n⚠ dip 已登记：回升义务挂账，下一闭合步必须改善。' : ''
       const maintainNote = r.step.vExpect === 'maintain' ? '\n⚠ maintain 已登记：本步闭合条件=测后仍 at（保持目标态验证，无回升义务；测后掉档=倒退直拒）。' : ''
+      // v0.8.26 推导来源明示（省略 vExpect 时引擎按档位推导——不再是猜）
+      const veNote = r.step.vExpectSource === 'derived' ? `\nvExpect=${r.step.vExpect}（未填→引擎按当前档推导；想改判就显式写，写错仍拒）` : `\nvExpect=${r.step.vExpect}（显式声明）`
       const ss = r.sourceStats || { read: 0, probe: 0, prior: 0, engram: 0 }
       const srcLine = `来源：read×${ss.read} probe×${ss.probe} engram×${ss.engram || 0} prior×${ss.prior}` + (ss.prior > 0 ? `（⚠ 显式先验×${ss.prior}：诚实先验可引，预言失效风险自负——能升 read:/probe:/engram: 就升）` : '') + ((r.sourceHits || []).length ? `\n${r.sourceHits.join('\n')}` : '')
       // v0.4.3 口径对齐辅助（引 probe: 时现场出示台账证据——引用时刻即核对时刻，防上下文漂移后抄错键/错位值）
@@ -741,7 +743,7 @@ export function optimalDeclareDefinition() {
         bindActualAction({ taskState, actionKind: 'declare', actionTitle: r.step.title })
       } catch { /* 归因账故障不影响真实 declare */ }
       return { ok: true, text: (auto ? `✅ 已自动立项（声明即合同）：承诺 ${(s.cost.assertions || []).length} 条。
-` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${masterLine}\n${nf}` }
+` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${veNote}${masterLine}\n${nf}` }
     },
   }
 }
