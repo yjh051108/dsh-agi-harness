@@ -59,6 +59,7 @@ export function recordDebts(debts, predictions = [], step = null) {
       cur.misses = (cur.misses || 0) + 1
       // 已清偿过还再猜 = 直接升级（世界已经答过一次）
       cur.state = cur.state === 'discharged' ? 'escalated' : (cur.state === 'escalated' ? 'escalated' : 'open')
+      if (cur.state === 'escalated') cur.everEscalated = true
       cur.at = step != null ? step : cur.at
       continue
     }
@@ -67,10 +68,10 @@ export function recordDebts(debts, predictions = [], step = null) {
   return out
 }
 
-/** 升级：猜错（预言失配）→ 这笔债只能用世界还。 */
+/** 升级：猜错（预言失配）→ 这笔债只能用世界还。everEscalated 留痕（清偿后仍可查）。 */
 export function escalateDebts(debts, keys = []) {
   const set = new Set((Array.isArray(keys) ? keys : []).map(claimKey))
-  return (Array.isArray(debts) ? debts : []).map((d) => (set.has(d.claimKey) && d.state !== 'discharged' ? { ...d, state: 'escalated' } : { ...d }))
+  return (Array.isArray(debts) ? debts : []).map((d) => (set.has(d.claimKey) && d.state !== 'discharged' ? { ...d, state: 'escalated', everEscalated: true } : { ...d }))
 }
 
 /** 清偿：吻合（by='measure'）或带实证来源（by=<kind>）→ 这笔债消。 */

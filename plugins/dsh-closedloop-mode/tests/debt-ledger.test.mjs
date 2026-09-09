@@ -71,6 +71,7 @@ test('d7 dischargeDebts 清偿 + 已清偿后重新猜 → 直接升级', () => 
   d = recordDebts(d, [P('a', 'prior:再猜一次')])
   assert.equal(d.length, 1, '同一 claimKey 不重复建账')
   assert.equal(d[0].state, 'escalated', '世界答过一次还再猜=直接升级')
+  assert.equal(d[0].everEscalated, true, '升级过要留痕（清偿后仍可查）')
   assert.equal(refuseGuess(d, [P('a', 'prior:第三次')]).refuse, true)
 })
 
