@@ -17,6 +17,9 @@ const here = dirname(fileURLToPath(import.meta.url))
 const argDir = (process.argv.slice(2).find((x) => x.startsWith('--dir=')) || '').split('=')[1]
 const srcDir = argDir || join(here, '..', 'src')
 const top = Number((process.argv.slice(2).find((x) => x.startsWith('--top=')) || '').split('=')[1] || 8)
+/** 阈值门（可选）：--max-seams=N / --max-ratio=R —— 超阈 exit 1（把「缝要变少」变成可判定的判据） */
+const maxSeams = Number((process.argv.slice(2).find((x) => x.startsWith('--max-seams=')) || '').split('=')[1])
+const maxRatio = Number((process.argv.slice(2).find((x) => x.startsWith('--max-ratio=')) || '').split('=')[1])
 
 if (!existsSync(srcDir)) { console.log(`✗ src 不存在：${srcDir}`); process.exit(1) }
 
@@ -53,4 +56,10 @@ for (const r of rows.sort((a, b) => (b.inject + b.prose + b.advice) - (a.inject 
   console.log(`${r.file} | ${r.inject} | ${r.prose} | ${r.advice} | ${r.readout}`)
 }
 console.log('\n注：缝=同一份信息以「对话叮嘱」形态进入判断力；归约方向是把它改成「读数」进入下一步计算（见 docs/ONE-INDIVIDUAL.md §七）。')
-process.exit(0)
+
+let fail = 0
+const ratio = totals.readout ? seams / totals.readout : Infinity
+if (Number.isFinite(maxSeams) && seams > maxSeams) { fail++; console.log(`✗ 缝阈值：${seams} > ${maxSeams}`) }
+if (Number.isFinite(maxRatio) && ratio > maxRatio) { fail++; console.log(`✗ 比值阈值：${ratio.toFixed(2)} > ${maxRatio}`) }
+if (Number.isFinite(maxSeams) || Number.isFinite(maxRatio)) console.log(fail === 0 ? 'SEAM OK' : `SEAM FAIL（${fail} 项）`)
+process.exit(fail === 0 ? 0 : 1)

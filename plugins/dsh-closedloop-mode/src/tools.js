@@ -37,7 +37,6 @@ import { execCmdSync, execCmdAsync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
 import { runFalsifyGate, CONTROLS_FULL, falsifyKey } from './falsify.js'
-import { aestheticNudge, stallHint } from './nudges.js'
 import { recordAbility, abilitySummary, readAbilities } from './ability-organ.js'
 import { bindActualAction, buildTaskState, recordBoundOutcome } from './task-value-core.js'
 import { getModelFingerprint } from './gate-core.js'
@@ -853,8 +852,6 @@ export function optimalDeclareDefinition() {
       try { const bl = baselineLine(loadStack(sid).steps, r.step.predictions); if (bl) masterLine = '\n' + bl } catch { /* 基线不可得=零注入 */ }
       // v0.6.4 近场锚 live 案底修：引擎 step 无 group 字段（活卡逮到组名/判据渲染空）——组名从 args 补进锚视图
       const nf = nearField(s, { ...r.step, group: String(args?.group || '').trim() || r.step.group }, (s.closed || []).length ? s.closed[s.closed.length - 1] : null)
-      // v0.8.34 降噪：目标组含人判项时插一行——感官类结论别写成 predict 数值
-      const aNudge = aestheticNudge((s.groups || []).find((g) => g && g.title === (String(args?.group || '').trim() || r.step.group)))
       onDeclareSuccess({ predictions: r.step.predictions.length, channels: r.step.measure.channels.length })
       try {
         const latest = loadState(sid) || s
@@ -862,7 +859,7 @@ export function optimalDeclareDefinition() {
         bindActualAction({ taskState, actionKind: 'declare', actionTitle: r.step.title })
       } catch { /* 归因账故障不影响真实 declare */ }
       return { ok: true, text: (auto ? `✅ 已自动立项（声明即合同）：承诺 ${(s.cost.assertions || []).length} 条。
-` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${veNote}${masterLine}${aNudge ? '\n' + aNudge : ''}\n${nf}` }
+` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${veNote}${masterLine}\n${nf}` }
     },
   }
 }
@@ -915,18 +912,7 @@ export function optimalConvergeDefinition() {
           const sd = loadState(sid)
           if (sd && sd.stage !== 'off') { saveState(sid, { ...sd, rank: { ...demoteOnFake(sd.rank), at: Date.now() } }); }
         } catch { /* 降档失败不阻断预言失效主回执（诚实位：留痕于 rank 缺位） */ }
-        // v0.8.34 降噪：同一动作连续不中 ≥2 次时，话术从「回滚重推」改成「别在原地打磨」
-        let stallLine = ''
-        try {
-          const st = loadStack(sid).steps
-          let streak = 0
-          for (let i = st.length - 1; i >= 0; i--) {
-            const x = st[i]
-            if (x.title === r.step.title) { if (x.status !== 'closed') streak++; else break } else if (streak > 0) break
-          }
-          stallLine = stallHint(streak) ? '\n' + stallHint(streak) : ''
-        } catch { /* 栈不可读=零注入 */ }
-        return { ok: true, text: `⚠️ 动作「${r.step.title}」预言失效（${r.step.discrepancies.length} 不吻合）：\n${list}\nrollback 重推 → 重 declare（同签名直拒）。禁止修补冲刺。${stallLine}\n${rankLine({ T: 0, demoted: true }, null)}${(() => { const eg = (r.step.predictions || []).map((p) => String(p.source || '')).filter((x) => x.startsWith('engram:')).map((x) => x.slice(7).trim()); return eg.length ? `\n📌 本步引了图谱锚点 ${eg.join('、')} 且被测量证伪——建议图侧标 disputed（模型誊写 engram_update，协议不直写图 R15；记忆是先验从不是证据，冲突测量赢）` : '' })()}` }
+        return { ok: true, text: `⚠️ 动作「${r.step.title}」预言失效（${r.step.discrepancies.length} 不吻合）：\n${list}\nrollback 重推 → 重 declare（同签名直拒）。禁止修补冲刺。\n${rankLine({ T: 0, demoted: true }, null)}${(() => { const eg = (r.step.predictions || []).map((p) => String(p.source || '')).filter((x) => x.startsWith('engram:')).map((x) => x.slice(7).trim()); return eg.length ? `\n📌 本步引了图谱锚点 ${eg.join('、')} 且被测量证伪——建议图侧标 disputed（模型誊写 engram_update，协议不直写图 R15；记忆是先验从不是证据，冲突测量赢）` : '' })()}` }
       }
       let s = mustState(sid)
       const gTitle = String(args?.group || '').trim()
