@@ -218,6 +218,7 @@ export function serializeState(s) {
     lockedPromises: s.lockedPromises || undefined, // v0.5.12 方案A 目标锁承诺槽（自动立项：首个声明的键值承诺集）
     writeSet: Array.isArray(s.writeSet) && s.writeSet.length ? s.writeSet : undefined, // v0.8.30 写入面台账（空=无键）
     iou: Array.isArray(s.iou) && s.iou.length ? s.iou.map((e) => ({ group: String(e?.group || ''), text: String(e?.text || ''), at: typeof e?.at === 'number' ? e.at : null, paidAt: typeof e?.paidAt === 'number' ? e.paidAt : null })) : undefined, // v0.8.31 欠据账（空=无键）
+    debts: Array.isArray(s.debts) && s.debts.length ? s.debts.map((d) => ({ claimKey: String(d?.claimKey || ''), key: String(d?.key || ''), claim: String(d?.claim || ''), at: typeof d?.at === 'number' ? d.at : null, state: String(d?.state || 'open'), misses: Number(d?.misses) || 0, hits: Number(d?.hits) || 0, by: d?.by ? String(d.by) : null })) : undefined, // v0.8.36 欠世界的债（空=无键）
     injected: [...(s.injected || [])],
   }
 }
@@ -260,6 +261,19 @@ export function deserializeState(obj) {
       paidAt: typeof e?.paidAt === 'number' ? e.paidAt : null,
     })).filter((e) => e.group && e.text)
     if (s.iou.length === 0) delete s.iou
+  }
+  if (Array.isArray(obj.debts) && obj.debts.length) { // v0.8.36 欠世界的债（缺位/空=无键）
+    s.debts = obj.debts.map((d) => ({
+      claimKey: String(d?.claimKey || ''),
+      key: String(d?.key || ''),
+      claim: String(d?.claim || ''),
+      at: typeof d?.at === 'number' ? d.at : null,
+      state: ['open', 'escalated', 'discharged'].includes(d?.state) ? d.state : 'open',
+      misses: Number(d?.misses) || 0,
+      hits: Number(d?.hits) || 0,
+      by: d?.by ? String(d.by) : null,
+    })).filter((d) => d.claimKey)
+    if (s.debts.length === 0) delete s.debts
   }
   if (obj.scanLog && typeof obj.scanLog === 'object') s.scanLog = obj.scanLog
   if (typeof obj.reviewNote === 'string' && obj.reviewNote) s.reviewNote = obj.reviewNote

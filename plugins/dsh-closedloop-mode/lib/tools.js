@@ -36,6 +36,7 @@ import { homedir } from 'node:os'
 import { execCmdSync, execCmdAsync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
+import { claimKey, recordDebts, escalateDebts, dischargeDebts, refuseGuess, debtLine, isEvidential, sourceKind, cheapestRepay } from './debt-ledger.js'
 import { runFalsifyGate, CONTROLS_FULL, falsifyKey } from './falsify.js'
 import { recordAbility, abilitySummary, readAbilities } from './ability-organ.js'
 import { bindActualAction, buildTaskState, recordBoundOutcome } from './task-value-core.js'
@@ -795,6 +796,13 @@ export function optimalDeclareDefinition() {
         notes = m.notes
       }
       contract.ticketBand = controlSurface(s).residual.lastBand || null // r48 定界：闸只看本票合同内权威档
+      // v0.8.36 债闸：已升级的债（猜错过）只能用世界还——同 claimKey 的非实证来源直拒（第一次猜放行）
+      const _dg = refuseGuess(s.debts || [], contract.predictions || [])
+      if (_dg.refuse) {
+        noteFriction(sid, 'declare', 'world-debt')
+        onDeclareReject({ reason: 'world-debt' })
+        throw new Error(`这笔债只能用世界还：${_dg.items.map((x) => x.key).join('、')}——去拿实证（还债优先级 ${cheapestRepay()}）`)
+      }
       const r = declareStep(sid, contract)
       if (!r.ok) {
         noteFriction(sid, 'declare', r.error)
@@ -812,6 +820,16 @@ export function optimalDeclareDefinition() {
         }
         throw new Error(r.error + (/来源纪律/.test(r.error || '') ? `\n⏳ 索取单已挂账（缺料清单落盘，后续回执续追）` : ''))
       }
+      // v0.8.36 债账：非实证来源建债；带实证来源的断言清偿同 claimKey 旧债（债由「拿到的东西」还）
+      try {
+        const sd0 = loadState(sid)
+        if (sd0 && sd0.stage !== 'off') {
+          let db = recordDebts(sd0.debts || [], r.step.predictions, Date.now())
+          const evid = (r.step.predictions || []).filter((p) => isEvidential(p && p.source))
+          if (evid.length) db = dischargeDebts(db, evid.map((p) => p.key), sourceKind(evid[0].source))
+          saveState(sid, { ...sd0, debts: db })
+        }
+      } catch { /* 债账失败不阻断声明 */ }
       // 索取单解决位：declare 通过=料齐了，销单并在回执记数（不静默）
       let demandNote = ''
       try {
@@ -826,6 +844,9 @@ export function optimalDeclareDefinition() {
       const veNote = r.step.vExpectSource === 'derived' ? `\nvExpect=${r.step.vExpect}（未填→引擎按当前档推导；想改判就显式写，写错仍拒）` : `\nvExpect=${r.step.vExpect}（显式声明）`
       const ss = r.sourceStats || { read: 0, probe: 0, prior: 0, engram: 0 }
       const srcLine = `来源：read×${ss.read} probe×${ss.probe} engram×${ss.engram || 0} prior×${ss.prior}` + (ss.prior > 0 ? `（⚠ 显式先验×${ss.prior}：诚实先验可引，预言失效风险自负——能升 read:/probe:/engram: 就升）` : '') + ((r.sourceHits || []).length ? `\n${r.sourceHits.join('\n')}` : '')
+      // v0.8.36 债读数：非实证断言=欠世界的债（无债零注入）
+      let debtNote = ''
+      try { const _dl = debtLine(loadState(sid)?.debts || []); if (_dl) debtNote = '\n' + _dl } catch { /* 债账不可读=零注入 */ }
       // v0.4.3 口径对齐辅助（引 probe: 时现场出示台账证据——引用时刻即核对时刻，防上下文漂移后抄错键/错位值）
       const probeEvi = []
       for (const p of r.step.predictions) {
@@ -859,7 +880,7 @@ export function optimalDeclareDefinition() {
         bindActualAction({ taskState, actionKind: 'declare', actionTitle: r.step.title })
       } catch { /* 归因账故障不影响真实 declare */ }
       return { ok: true, text: (auto ? `✅ 已自动立项（声明即合同）：承诺 ${(s.cost.assertions || []).length} 条。
-` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${veNote}${masterLine}\n${nf}` }
+` : '') + `✅ 动作「${r.step.title}」已声明（open·准入=${admission}）。预测 ${r.step.predictions.length}、通道 ${r.step.measure.channels.length}、law ${r.step.law.length}（含基行）、beforeBand=${controlSurface(s).residual.lastBand || 'far'}（引擎直读）。${srcLine}${debtNote}${demandNote}${notes.length ? '\n' + notes.join('\n') : ''}${eviLine}${lowNote}${dipNote}${maintainNote}${veNote}${masterLine}\n${nf}` }
     },
   }
 }
@@ -905,6 +926,16 @@ export function optimalConvergeDefinition() {
       } catch { /* 裁判层故障=正则保底 */ }
       const r = convergeStep(sid, args || {})
       if (!r.ok) { noteFriction(sid, 'converge', r.error); onConvergeReject({ reason: String(r.error || '').slice(0, 60) }); throw new Error(r.error) }
+      // v0.8.36 债的清偿与升级：吻合/带实证→清偿；失配→升级（这笔债只能用世界还）
+      try {
+        const sd = loadState(sid)
+        if (sd && sd.stage !== 'off' && Array.isArray(sd.debts) && sd.debts.length) {
+          const keys = (r.step.predictions || []).map((p) => p.key)
+          // 步闭合=这批断言被测量兑现 → 清偿；步失配=这批断言没有实测支撑 → 全部升级（只影响真有债的键）
+          if (r.step.status === 'closed') saveState(sid, { ...sd, debts: dischargeDebts(sd.debts, keys, 'measure') })
+          else if (keys.length) saveState(sid, { ...sd, debts: escalateDebts(sd.debts, keys) })
+        }
+      } catch { /* 债账失败不阻断对账 */ }
       if (r.step.status !== 'closed') {
         const list = (r.step.discrepancies || []).map((x) => '  ✗ ' + x).join('\n')
         // v0.5.0 档位即时降（风险不对称：声称被测量证伪=装完成案底，直降 T0 不隔夜）
