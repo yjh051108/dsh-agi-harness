@@ -37,6 +37,7 @@ import { execCmdSync, execCmdAsync, classifyFailure } from './run-cmd.js'
 import { onDeclareSuccess, onDeclareReject, onConvergeSuccess, onConvergeReject, onTerminalZero, onProbeSuccess, onProbeReject, onRollback } from './gate-wiring.js'
 import { recordLesson, lessonSummary } from './learning-organ.js'
 import { claimKey, recordDebts, escalateDebts, dischargeDebts, refuseGuess, debtLine, isEvidential, sourceKind, cheapestRepay } from './debt-ledger.js'
+import { dispositionLine, recordTrust, trustSummary } from './trust-ledger.js'
 import { runFalsifyGate, CONTROLS_FULL, falsifyKey } from './falsify.js'
 import { recordAbility, abilitySummary, readAbilities } from './ability-organ.js'
 import { bindActualAction, buildTaskState, recordBoundOutcome } from './task-value-core.js'
@@ -818,6 +819,8 @@ export function optimalDeclareDefinition() {
             }
           } catch { /* 索取单落盘失败不阻断拒回执 */ }
         }
+        // v0.8.37 诚信留痕：伪造测量/冒充证据=硬边界违规（落盘提交开发者）
+        if (/探针台账缺 key|伪造|冒充/.test(r.error || '')) { try { recordTrust({ sid, kind: 'violation', detail: String(r.error).slice(0, 200) }) } catch { /* 留痕失败不阻断拒回执 */ } }
         throw new Error(r.error + (/来源纪律/.test(r.error || '') ? `\n⏳ 索取单已挂账（缺料清单落盘，后续回执续追）` : ''))
       }
       // v0.8.36 债账：非实证来源建债；带实证来源的断言清偿同 claimKey 旧债（债由「拿到的东西」还）
@@ -898,6 +901,8 @@ export function optimalConvergeDefinition() {
         group: { type: 'string', description: '本动作归属组（recordClosed 口径）' },
         closeGroup: { type: 'boolean', description: '该组由本动作收尾（触发机械落账门）' },
         dv: { type: 'object', additionalProperties: false, required: ['beforeBand', 'measuredBand', 'channels'], properties: { beforeBand: { type: 'string', enum: ['far', 'near', 'at'] }, measuredBand: { type: 'string', enum: ['far', 'near', 'at'] }, channels: { type: 'array', items: { type: 'string' } } } },
+        disposition: { type: 'string', enum: ['continue', 'turn', 'repair', 'stop'], description: '偏差处置（自评，v0.8.37）：continue=继续 / turn=拐弯 / repair=下一步修 / stop=暂停；有偏差时必须给——偏差是观察不是判决，处置权在你' },
+        reason: { type: 'string', description: '处置理由（一句话，记入账本）' },
       },
     },
     output: OUT,
@@ -924,16 +929,16 @@ export function optimalConvergeDefinition() {
           }
         }
       } catch { /* 裁判层故障=正则保底 */ }
-      const r = convergeStep(sid, args || {})
+      const r = convergeStep(sid, { ...(args || {}), selfScore: true })
       if (!r.ok) { noteFriction(sid, 'converge', r.error); onConvergeReject({ reason: String(r.error || '').slice(0, 60) }); throw new Error(r.error) }
       // v0.8.36 债的清偿与升级：吻合/带实证→清偿；失配→升级（这笔债只能用世界还）
       try {
         const sd = loadState(sid)
         if (sd && sd.stage !== 'off' && Array.isArray(sd.debts) && sd.debts.length) {
           const keys = (r.step.predictions || []).map((p) => p.key)
-          // 步闭合=这批断言被测量兑现 → 清偿；步失配=这批断言没有实测支撑 → 全部升级（只影响真有债的键）
-          if (r.step.status === 'closed') saveState(sid, { ...sd, debts: dischargeDebts(sd.debts, keys, 'measure') })
-          else if (keys.length) saveState(sid, { ...sd, debts: escalateDebts(sd.debts, keys) })
+          // v0.8.37：有偏差=这批断言没被测量兑现 → 债升级（与是否闭合无关）；无偏差=清偿
+          if ((r.step.deviations && r.step.deviations.length) || (r.step.discrepancies && r.step.discrepancies.length)) saveState(sid, { ...sd, debts: escalateDebts(sd.debts, keys) })
+          else if (r.step.status === 'closed') saveState(sid, { ...sd, debts: dischargeDebts(sd.debts, keys, 'measure') })
         }
       } catch { /* 债账失败不阻断对账 */ }
       if (r.step.status !== 'closed') {
@@ -980,6 +985,7 @@ export function optimalConvergeDefinition() {
       claimGuidance(sid, { terminal: s.stage === 'final' }) // 回执含残差+下一步指引：认领之，注入不再重复
       const surf = controlSurface(s)
       const head = `✅ 动作「${r.step.title}」closed（吻合 ${r.step.agreed.length} + ΔV ${r.step.dv.before}→${r.step.dv.after}）= 账面锚点 · 剩余未落账组=${surf.residual.groupsOpen.length}·已闭=${surf.residual.closedCount}`
+      const dispLine = dispositionLine((r.step.deviations || []).length, r.step.disposition && r.step.disposition.call, r.step.disposition && r.step.disposition.reason)
       const vLine = vr ? `📏 实测计分=${vr.V}（已测断言 ${vr.green}/${vr.total}·z=[${vr.zs.join(', ')}]${vr.errs && vr.errs.length ? `·⚠ 读数失败诊断: ${vr.errs.join(' | ')}` : ''}——未测投影不入 V，output feedback 诚实位）` : ''
       let devLn = ''
       try { devLn = deviationLine(r.step) } catch { /* 偏差不可算=零注入 */ }
@@ -1002,7 +1008,7 @@ export function optimalConvergeDefinition() {
         if (cc2 && typeof cc2.C === 'number') { const gap = Math.max(0, 45 - cc2.C); rankProg = `\n📈 档位进度：样本 ${cc2.n || 0}/8 · C=${cc2.C} · 距 T1 线（C≥45）${gap ? `差 ${gap}` : '已达标'}（再犯罚已含）${cc2.slips ? `；措辞层回炉 ${cc2.slips} 不计信誉` : ''}` }
       } catch { }
       onConvergeSuccess({ step: r.step.title, dv: r.step.dv ? `${r.step.dv.before}→${r.step.dv.after}` : 'n/a' })
-      return { ok: true, text: [head, vLine, devLn, rankProg, closeHint, briefNote, notes.join('\n'), s.stage === 'final' ? '全链落账 → terminal_check 归零。' : ''].filter(Boolean).join('\n') }
+      return { ok: true, text: [head, dispLine, vLine, devLn, rankProg, closeHint, briefNote, notes.join('\n'), s.stage === 'final' ? '全链落账 → terminal_check 归零。' : ''].filter(Boolean).join('\n') }
     },
   }
 }
@@ -1223,6 +1229,8 @@ export function terminalCheckDefinition() {
         : `⚠ 终端未归零（交处置）：未落账组=${rep.unsettledGroups.join('、') || '无'}；未闭动作=${rep.openSteps.join('、') || '无'}；dip=${rep.dipPending}`
       // v0.6.35 摩擦账本实况行（隐形税首次可测——终检时读一手读数；v0.6.36 修：head 须 let——const 重赋值被 try 吞=账实不符案底）
       try { const fl = frictionLine(sid); if (fl) head = head + '\n' + fl } catch { /* 账本不可读=零注入 */ }
+      // v0.8.37 诚信台账（开发者可见）：伪造/绕过/误判落盘并在归零回执汇总
+      try { const ts = trustSummary({ sid }); if (ts) head = head + '\n' + ts } catch { /* 台账不可读=零注入 */ }
       // v0.7.0 闸接线：归零→progress 闸正效果 + 质量账本自动记录
       if (rep.zero) { try { onTerminalZero({ s, stack: loadStack(sid), frictionSummary: frictionSummary(sid), sid }) } catch { /* 闸记录失败不影响归零 */ } }
       // v0.4.6 环铸记忆写路径：归零即出蒸馏草稿；r29 学习含量门（判定住 pricing-organ）：仪式单免提

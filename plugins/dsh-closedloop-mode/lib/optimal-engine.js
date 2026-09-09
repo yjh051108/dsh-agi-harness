@@ -495,6 +495,22 @@ export function convergeStep(sid, args) {
       if (forced.length) { cur.discrepancies = [...cur.discrepancies, ...forced]; cur.discrepancyCodes = [...(cur.discrepancyCodes || []), ...forcedCodes] }
     }
   }
+  // v0.8.37 偏差=观察，不是判决：模型给了处置（continue|turn|repair|stop）就闭合（偏差留痕），
+  // 没给处置=旧口径（invalidated，等处置）——「必须自评」由工具层索取，引擎不代判。
+  if (cur.discrepancies.length > 0) {
+    const disp = String(args?.disposition || '')
+    const valid = ['continue', 'turn', 'repair', 'stop'].includes(disp)
+    // 工具层 selfScore=true：有偏差未给处置 → 索取自评（**不改步状态**，可带处置重交）；
+    // 引擎直调（旧路径）=不改状态机语义（invalidated），历史单测与账本不受影响。
+    if (args?.selfScore && !valid) {
+      return { ok: false, needDisposition: true, error: `本步有 ${cur.discrepancies.length} 处偏差——偏差是观察不是判决，处置权在你：带 disposition=continue|turn|repair|stop（+ 可选 reason）重交对账。偏差清单：\n${cur.discrepancies.map((x) => '  · ' + x).join('\n')}` }
+    }
+    if (valid) {
+      cur.deviations = [...(cur.deviations || []), ...cur.discrepancies]
+      cur.disposition = { call: disp, reason: String(args?.reason || '').slice(0, 200), at: Date.now() }
+      cur.discrepancies = [] // 已处置：不再触发回炉义务（记录留在 deviations）
+    }
+  }
   // ② ΔV 序带 + ③ 双通道
   const dv = args?.dv || null
   if (!args?.exempt && cur.discrepancies.length === 0) {

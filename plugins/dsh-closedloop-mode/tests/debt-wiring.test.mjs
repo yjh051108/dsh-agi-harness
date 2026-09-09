@@ -51,7 +51,7 @@ test('w3 converge 失配 → 该债升级（只能用世界还）', async () => 
   const sid = 'dw-3'
   seed(sid)
   await T.optimalDeclareDefinition().execute(DECL(), exec(sid))
-  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }] }), exec(sid))
+  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }], disposition: 'continue', reason: '偏差已记录' }), exec(sid))
   const s = ms.loadState(sid)
   assert.equal(s.debts[0].state, 'escalated', '猜错=升级，不是回炉罚')
 })
@@ -60,7 +60,7 @@ test('w4 升级后同 claimKey 再用 prior → 直拒（这笔债只能用世�
   const sid = 'dw-4'
   seed(sid)
   await T.optimalDeclareDefinition().execute(DECL(), exec(sid))
-  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }] }), exec(sid))
+  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }], disposition: 'continue', reason: '偏差已记录' }), exec(sid))
   await assert.rejects(
     () => T.optimalDeclareDefinition().execute(DECL({ title: '步B' }), exec(sid)),
     /这笔债只能用世界还/,
@@ -78,7 +78,7 @@ test('w5 带实证来源（read:）→ 放行并清偿旧债', async () => {
   const f = path.join(TMP, 'evidence.txt')
   fs.writeFileSync(f, 'vendor: three.module.js OrbitControls.js\n')
   await T.optimalDeclareDefinition().execute(DECL(), exec(sid))
-  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }] }), exec(sid))
+  await T.optimalConvergeDefinition().execute(CONV({ agreedPairs: [{ key: 'vendor 文件数', measured: '3', predicted: '2', channel: 'a' }], disposition: 'continue', reason: '偏差已记录' }), exec(sid))
   const r = await T.optimalDeclareDefinition().execute(DECL({ title: '步D', predict: [{ key: 'vendor 文件数', value: '2', source: `read:${f}#L1` }] }), exec(sid))
   assert.match(r.text, /已声明/, '实证来源放行')
   const s = ms.loadState(sid)

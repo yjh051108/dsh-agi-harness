@@ -76,12 +76,10 @@ test('j5 裁判缺席保底：无数字实证仍判不吻合（不放水，v0.8 
   s = { ...s, groups: [{ title: 'G', spec: 's', accept: ['a'], verify: 'self', settled: null }] }
   saveState(sid, onWeightsConfirmed(onWeightsFreeze(s).state))
   declareStep(sid, { title: 'J2', predictions: [{ key: '行数', value: '30', source: 'prior:fs' }], law: [{ signal: 's', action: 'a' }], measure: { channels: ['fs: a', 'rt: b'] } })
-  const r = await T.optimalConvergeDefinition().execute({
+  await assert.rejects(() => T.optimalConvergeDefinition().execute({
     agreed: ['行数实测约三十行，与预期相符'],
     dv: { beforeBand: 'far', measuredBand: 'near', channels: ['fs: a', 'rt: b'] },
-  }, exec(sid))
-  assert.match(r.text, /预言失效/)
-  assert.match(r.text, /无数值实证/, '无裁判=中文数字不算实证（保底不是放水）')
+  }, exec(sid)), /处置权在你[\s\S]*无数值实证/, 'v0.8.37：偏差先要模型自评处置，但偏差本身仍如实报出（保底不是放水）')
 })
 
 test('j6 agreedMatch 单一真相：match/no-number/unequal/declared-mismatch/no-key 五态', () => {

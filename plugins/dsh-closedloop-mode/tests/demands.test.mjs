@@ -57,8 +57,9 @@ test('m3 预言失效且该步引 engram: 源 → 回执带 disputed 提案（�
   const r = await d.execute({ title: '引图步', group: 'G', predict: [{ key: 'k', value: '1', source: 'engram:[[经验节点]]' }], channels: ['a', 'b'] }, exec(sid))
   assert.match(r.text, /engram.*经验节点.*✓/)
   const c = T.optimalConvergeDefinition()
-  const cv = await c.execute({ agreed: ['k: 实测 2 ≠ 预测 1(引擎复验)'], dv: { beforeBand: 'far', measuredBand: 'near', channels: ['a', 'b'] }, group: 'G' }, exec(sid))
-  assert.match(cv.text, /disputed.*engram_update|R15/s)
+  await assert.rejects(() => c.execute({ agreed: ['k: 实测 2 ≠ 预测 1(引擎复验)'], dv: { beforeBand: 'far', measuredBand: 'near', channels: ['a', 'b'] }, group: 'G' }, exec(sid)), /处置权在你/s, 'v0.8.37：偏差先要模型自评处置')
+  const cv = await c.execute({ agreed: ['k: 实测 2 ≠ 预测 1(引擎复验)'], dv: { beforeBand: 'far', measuredBand: 'near', channels: ['a', 'b'] }, group: 'G', disposition: 'continue', reason: '偏差已记录' }, exec(sid))
+  assert.match(cv.text, /偏差处置：continue/, 'v0.8.37：偏差=观察，给处置即闭合（不再强制回炉）')
 })
 
 process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {} })
